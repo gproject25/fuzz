@@ -429,41 +429,6 @@ impl Deopt {
         Ok(path)
     }
 
-    /// get the directory path of pch files. pch files: https://clang.llvm.org/docs/UsersManual.html#precompiled-headers
-    pub fn get_pch_path() -> Result<PathBuf> {
-        let path: PathBuf = [Deopt::get_crate_dir()?, "data", "pch"].iter().collect();
-        Ok(path)
-    }
-
-    pub fn init_pch_file_names() -> Result<Vec<String>> {
-        let path = Deopt::get_pch_path()?;
-        let mut names = vec![];
-        for entry in std::fs::read_dir(path)? {
-            let file = entry?
-                .file_name()
-                .to_str()
-                .ok_or_else(|| eyre::eyre!("file name is invlaid utf-8"))?
-                .to_string();
-            names.push(file)
-        }
-        Ok(names)
-    }
-
-    pub fn get_pch_names() -> Result<&'static Vec<String>> {
-        Ok(unsafe { crate::PCH_NAMES.get_or_init(|| Deopt::init_pch_file_names().unwrap()) })
-    }
-
-    pub fn get_pch_names_mut() -> Result<&'static mut Vec<String>> {
-        Ok(unsafe { crate::PCH_NAMES.get_mut().unwrap() })
-    }
-    // get incoder sever script path.
-    pub fn get_incoder_path() -> Result<PathBuf> {
-        let path = [Deopt::get_crate_dir()?, config::INCODER_PATH]
-            .iter()
-            .collect();
-        Ok(path)
-    }
-
     pub fn get_server_logger_path(&self) -> Result<PathBuf> {
         let path = [self.get_library_output_dir()?, "llm_server.log".into()]
             .iter()

@@ -4,11 +4,9 @@ use crate::{
     deopt::Deopt,
     mutation::mutate_prompt,
     program::{
-        gadget::{get_func_gadget, get_func_gadgets, FuncGadget},
-        get_exec_counter, get_exec_counter_mut, load_exec_counter,
-        rand::{prob_coin, rand_comb_len, weighted_choose},
+        gadget::{get_func_gadget, get_func_gadgets, FuncGadget}, get_exec_counter_value, load_exec_counter, rand::{prob_coin, rand_comb_len, weighted_choose}, set_exec_counter_value
     },
-    request::prompt::{get_prompt_counter, get_prompt_counter_mut, load_prompt_counter, Prompt},
+    request::prompt::{get_prompt_counter_value, load_prompt_counter, set_prompt_counter_value, Prompt},
 };
 
 pub struct Seed {
@@ -92,10 +90,12 @@ impl Schedule {
     pub fn snyc_from_str(deopt: &Deopt) {
         let p_counter = load_prompt_counter(deopt);
         let e_counter = load_exec_counter(deopt);
-        let global_e_counter = get_exec_counter_mut();
-        _ = std::mem::replace(global_e_counter, e_counter);
-        let global_p_counter = get_prompt_counter_mut();
-        _ = std::mem::replace(global_p_counter, p_counter);
+        for (key, value) in e_counter {
+            set_exec_counter_value(key, value);
+        }
+        for (key, value) in p_counter {
+            set_prompt_counter_value(key, value);
+        }
     }
 
     // Compute the energy for each library API. The high energy means the high probablity to be choosed in prompt.
@@ -104,13 +104,13 @@ impl Schedule {
         for gadget in get_func_gadgets() {
             let api_name = gadget.get_func_name();
             let coverage = api_coverage.get(api_name).unwrap();
-            let prompt_count = get_prompt_counter().get(api_name).unwrap_or(&0);
-            let exec_count = get_exec_counter().get(api_name).unwrap_or(&0);
+            let prompt_count = get_prompt_counter_value(api_name).unwrap_or(0);
+            let exec_count = get_exec_counter_value(api_name).unwrap_or(0);
             let seed = Seed::new(
                 api_name,
                 *coverage,
-                *exec_count,
-                *prompt_count,
+                exec_count,
+                prompt_count,
                 self.exponent,
             );
             self.seeds.insert(api_name.to_string(), seed);

@@ -42,7 +42,7 @@ pub fn init_debug_logger() -> Result<()> {
     Ok(())
 }
 
-pub static mut PCH_NAMES: OnceCell<Vec<String>> = OnceCell::new();
+pub static PCH_NAMES: OnceCell<Vec<String>> = OnceCell::new();
 
 #[derive(Debug, thiserror::Error)]
 pub enum FuzzerError {

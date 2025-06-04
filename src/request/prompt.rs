@@ -4,6 +4,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
     path::PathBuf,
+    sync::RwLock,
 };
 
 #[derive(Clone, Debug)]
@@ -35,33 +36,19 @@ impl Display for Prompt {
     }
 }
 
-static mut COUNTER: OnceCell<HashMap<String, u32>> = OnceCell::new();
+static COUNTER: OnceCell<RwLock<HashMap<String, u32>>> = OnceCell::new();
 
 // Count the times of functions have been prompted.
-pub fn get_prompt_counter() -> &'static HashMap<String, u32> {
-    unsafe { COUNTER.get_or_init(HashMap::new) }
+pub fn get_prompt_counter_value(key: &str) -> Option<u32> {
+    let guard = COUNTER.get_or_init(|| RwLock::new(HashMap::new())).read().unwrap();
+    guard.get(key).copied()
 }
 
-pub fn get_prompt_counter_mut() -> &'static mut HashMap<String, u32> {
-    if let Some(counter) = unsafe { COUNTER.get_mut() } {
-        save_prompt_counter(counter);
-        counter
-    } else {
-        get_prompt_counter();
-        get_prompt_counter_mut()
-    }
+pub fn set_prompt_counter_value(key: String, value: u32) {
+    let mut guard = COUNTER.get_or_init(|| RwLock::new(HashMap::new())).write().unwrap();
+    guard.insert(key, value);
 }
 
-fn save_prompt_counter(counter: &HashMap<String, u32>) {
-    let deopt = Deopt::new(get_library_name()).unwrap();
-    let counter_path: PathBuf = [
-        deopt.get_library_misc_dir().unwrap(),
-        "prompt_counter.json".into(),
-    ]
-    .iter()
-    .collect();
-    std::fs::write(counter_path, serde_json::to_string(counter).unwrap()).unwrap();
-}
 
 pub fn load_prompt_counter(deopt: &Deopt) -> HashMap<String, u32> {
     let counter_path: PathBuf = [
@@ -76,14 +63,10 @@ pub fn load_prompt_counter(deopt: &Deopt) -> HashMap<String, u32> {
 }
 
 pub fn update_prompt_counter(combination: &Vec<&FuncGadget>) {
-    let counter = get_prompt_counter_mut();
     for func in combination {
         let func_name = func.get_func_name();
-        if let Some(count) = counter.get_mut(func_name) {
-            *count += 1;
-        } else {
-            counter.insert(func_name.to_string(), 1);
-        }
+        let count = get_prompt_counter_value(func_name).unwrap_or(0);
+        set_prompt_counter_value(func_name.to_string(), count + 1);
     }
 }
 

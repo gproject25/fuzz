@@ -1,5 +1,5 @@
 use crate::{
-    analysis::callgraph::get_lib_call_graph, config::get_config, program::get_exec_counter,
+    analysis::callgraph::get_lib_call_graph, config::get_config, program::get_exec_counter_value,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -289,8 +289,8 @@ impl GlobalBranches {
         let (covered_branches, total_branches) =
             self.get_func_branch_coverage(func, cov_cache, &mut visited)?;
         if total_branches == 0 {
-            if let Some(exec_count) = get_exec_counter().get(func) {
-                if exec_count == &0 {
+            if let Some(exec_count) = get_exec_counter_value(func) {
+                if exec_count == 0 {
                     return Ok(0_f32);
                 } else {
                     return Ok(1_f32);

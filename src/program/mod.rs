@@ -9,11 +9,11 @@ pub mod transform;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
 use self::gadget::FuncGadget;
 use self::serde::{Deserialize, Deserializer};
 use crate::ast::Visitor;
-use crate::config::get_library_name;
 use crate::deopt::Deopt;
 use crate::execution::Executor;
 use crate::feedback::branches::Branch;
@@ -22,31 +22,16 @@ use eyre::Result;
 use once_cell::sync::OnceCell;
 use regex::Regex;
 
-static mut EXEC_COUNTER: OnceCell<HashMap<String, u32>> = OnceCell::new();
+static EXEC_COUNTER: OnceCell<RwLock<HashMap<String, u32>>> = OnceCell::new();
 
-pub fn get_exec_counter() -> &'static HashMap<String, u32> {
-    unsafe { EXEC_COUNTER.get_or_init(HashMap::new) }
+pub fn get_exec_counter_value(key: &str) -> Option<u32> {
+    let guard = EXEC_COUNTER.get_or_init(|| RwLock::new(HashMap::new())).read().unwrap();
+    guard.get(key).copied() 
 }
 
-pub fn get_exec_counter_mut() -> &'static mut HashMap<String, u32> {
-    if let Some(counter) = unsafe { EXEC_COUNTER.get_mut() } {
-        save_exec_counter(counter);
-        counter
-    } else {
-        get_exec_counter();
-        get_exec_counter_mut()
-    }
-}
-
-fn save_exec_counter(counter: &HashMap<String, u32>) {
-    let deopt = Deopt::new(get_library_name()).unwrap();
-    let counter_path: PathBuf = [
-        deopt.get_library_misc_dir().unwrap(),
-        "exec_counter.json".into(),
-    ]
-    .iter()
-    .collect();
-    std::fs::write(counter_path, serde_json::to_string(counter).unwrap()).unwrap();
+pub fn set_exec_counter_value(key: String, value: u32) {
+    let mut guard = EXEC_COUNTER.get_or_init(|| RwLock::new(HashMap::new())).write().unwrap();
+    guard.insert(key, value);
 }
 
 pub fn load_exec_counter(deopt: &Deopt) -> HashMap<String, u32> {
@@ -170,10 +155,10 @@ impl Program {
         // compute diversity
         let api_calls = visitor.get_library_call_names();
         for call in api_calls.iter() {
-            if let Some(exec_count) = get_exec_counter_mut().get_mut(call) {
-                *exec_count += 1;
+            if let Some(exec_count) = get_exec_counter_value(call) {
+                set_exec_counter_value(call.to_string(), exec_count + 1);
             } else {
-                get_exec_counter_mut().insert(call.to_string(), 1);
+                set_exec_counter_value(call.to_string(), 1);
             }
         }
         // parse critical calls
