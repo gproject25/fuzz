@@ -109,7 +109,7 @@ pub fn get_openai_proxy() -> &'static Option<String> {
 
 
 pub fn init_openai_env() {
-    let model = std::env::var("OPENAI_MODEL_NAME").unwrap_or_else(|_| panic!("OPENAI_MODEL not set"));
+    let model = std::env::var("OPENAI_MODEL_NAME").unwrap_or_else(|_| panic!("OPENAI_MODEL_NAME not set"));
 
     let input_price =  std::env::var("OPENAI_INPUT_PRICE")
         .ok()
