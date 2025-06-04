@@ -7,12 +7,9 @@ use crate::{
     FuzzerError,
 };
 use async_openai::{
-    types::{
-        ChatCompletionRequestMessage, CreateChatCompletionRequest, CreateChatCompletionRequestArgs,
-        CreateChatCompletionResponse, CreateCompletionRequestArgs,
-    },
-    types::{CreateCompletionRequest, CreateCompletionResponse},
-    Client,
+    config::OpenAIConfig, types::{
+        ChatCompletionRequestMessage, CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse, CreateCompletionRequest, CreateCompletionRequestArgs, CreateCompletionResponse
+    }, Client
 };
 use eyre::Result;
 use once_cell::sync::OnceCell;
@@ -74,21 +71,23 @@ impl Handler for OpenAIHanler {
 }
 
 /// Get the OpenAI interface client.
-fn get_client() -> Result<&'static Client> {
+fn get_client() -> Result<&'static Client<OpenAIConfig>> {
     // read OpenAI API key form the env var (OPENAI_API_KEY).
-    pub static CLIENT: OnceCell<Client> = OnceCell::new();
+    pub static CLIENT: OnceCell<Client<OpenAIConfig>> = OnceCell::new();
     let client = CLIENT.get_or_init(|| {
         let http_client = reqwest::ClientBuilder::new()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(60))
             .build()
             .unwrap();
-        let client = if let Some(proxy) = get_openai_proxy() {
-            Client::new().with_api_base(proxy)
+        let openai_config = if let Some(proxy) = get_openai_proxy() {
+            OpenAIConfig::new().with_api_base(proxy)
         } else {
-            Client::new()
+            OpenAIConfig::new()
         };
-        client.with_http_client(http_client)
+        let client = Client::with_config(openai_config);
+        let client = client.with_http_client(http_client);
+        client
     });
     Ok(client)
 }
@@ -281,7 +280,7 @@ pub async fn generate_programs_by_chat(
     let mut programs: Vec<Program> = Vec::new();
     for choice in respond.choices {
         let content = choice.message.content;
-        let content = strip_code_wrapper(&content);
+        let content = strip_code_wrapper(&content.unwrap());
         let program = Program::new(&content);
         programs.push(program);
     }
@@ -315,7 +314,7 @@ async fn generate_infills_by_chat(
     let mut infills = vec![];
     for choice in respond.choices {
         let content = choice.message.content;
-        let content = strip_code_wrapper(&content);
+        let content = strip_code_wrapper(&content.unwrap());
         infills.push(content);
     }
     Ok(infills)

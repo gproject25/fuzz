@@ -90,10 +90,6 @@ pub fn is_critical_err<T>(err: &Result<T>) -> Critical {
                     std::thread::sleep(std::time::Duration::from_secs(60));
                     return Critical::NonCritical;
                 }
-                if api_err.r#type == "cf_bad_gateway" {
-                    log::warn!("502 Bad gateway!");
-                    return Critical::NonCritical;
-                }
                 if api_err
                     .message
                     .contains("That model is currently overloaded with other requests")

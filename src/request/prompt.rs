@@ -1,4 +1,4 @@
-use async_openai::types::{ChatCompletionRequestMessage, ChatCompletionRequestMessageArgs, Role};
+use async_openai::types::{ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionRequestMessage};
 use once_cell::sync::OnceCell;
 use std::{
     collections::{HashMap, HashSet},
@@ -119,32 +119,28 @@ impl Prompt {
                 log::trace!("System role: {sys_msg}");
                 let user_msg = config::get_user_chat_template()
                     .replace("{combinations}", &combination_to_str(combination));
-                let sys_msg = ChatCompletionRequestMessageArgs::default()
-                    .role(Role::System)
+                let sys_msg = ChatCompletionRequestSystemMessageArgs::default()
                     .content(sys_msg)
-                    .build()
-                    .unwrap();
-                let user_msg = ChatCompletionRequestMessageArgs::default()
-                    .role(Role::User)
+                    .build().unwrap()
+                    .into();
+                let user_msg = ChatCompletionRequestUserMessageArgs::default()
                     .content(user_msg)
-                    .build()
-                    .unwrap();
+                    .build().unwrap()
+                    .into();
                 vec![sys_msg, user_msg]
             }
             PromptKind::Infill(prefix, suffix) => {
                 let sys_msg = config::SYSTEM_INFILL_TEMPLATE;
                 let user_msg: String =
                     [prefix.clone(), "[INSERT]".to_string(), suffix.clone()].join("");
-                let sys_msg = ChatCompletionRequestMessageArgs::default()
-                    .role(Role::System)
+                let sys_msg = ChatCompletionRequestSystemMessageArgs::default()
                     .content(sys_msg)
-                    .build()
-                    .unwrap();
-                let user_msg = ChatCompletionRequestMessageArgs::default()
-                    .role(Role::User)
+                    .build().unwrap()
+                    .into();
+                let user_msg = ChatCompletionRequestUserMessageArgs::default()
                     .content(user_msg)
-                    .build()
-                    .unwrap();
+                    .build().unwrap()
+                    .into();
                 vec![sys_msg, user_msg]
             }
             PromptKind::Others => unreachable!("ChatGPT prompt cannot be Others kind."),
