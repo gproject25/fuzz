@@ -24,3 +24,4 @@
 /data/libvpx/work
 .keypool
 /benchmark/
+.env

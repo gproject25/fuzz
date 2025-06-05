@@ -12,6 +12,7 @@ use base64::Engine;
 use eyre::{Context, Result};
 use once_cell::sync::OnceCell;
 use std::collections::HashMap;
+use std::sync::RwLock;
 /// LibFuzzer's integeration: tranformation, synthesis, execution and sanitizaiton
 use std::path::{Path, PathBuf};
 use std::process::Child;
@@ -597,7 +598,7 @@ pub fn is_atrifact_reproducible(
 
 /// save the incident and respawn the libfuzzer
 pub fn respawn_libfuzzer_process(fuzzer_dir: &Path, executor: &Executor) -> Result<Child> {
-    static mut ERROR_COUNT: OnceCell<HashMap<u16, usize>> = OnceCell::new();
+    static ERROR_COUNT: OnceCell<RwLock<HashMap<u16, usize>>> = OnceCell::new();
 
     let fuzzer = get_fuzzer_path(fuzzer_dir);
     let fuzz_log = get_fuzzer_log(fuzzer_dir);
@@ -609,14 +610,17 @@ pub fn respawn_libfuzzer_process(fuzzer_dir: &Path, executor: &Executor) -> Resu
         log::info!("Found an error happened in driver: {driver_id}");
 
         // if this driver error many times
-        let counter: &HashMap<u16, usize> = unsafe { ERROR_COUNT.get_or_init(HashMap::new) };
-        let err_count = if let Some(value) = counter.get(&driver_id) {
-            *value
-        } else {
-            1
+        let err_count = {
+            let error_count_map_guard = ERROR_COUNT.get_or_init(|| RwLock::new(HashMap::new())).read().unwrap();
+            if let Some(value) = error_count_map_guard.get(&driver_id) {
+                *value
+            } else {
+                1
+            }
         };
-        if let Some(counter) = unsafe { ERROR_COUNT.get_mut() } {
-            *counter.entry(driver_id).or_default() += 1;
+
+        if let Ok(mut error_count_map_guard) = ERROR_COUNT.get_or_init(|| RwLock::new(HashMap::new())).write() {
+            *error_count_map_guard.entry(driver_id).or_default() += 1;
         }
 
         let incident_dir = get_incident_dir(fuzzer_dir, driver_id);

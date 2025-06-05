@@ -1,6 +1,5 @@
 pub mod ast;
 pub mod logger;
-pub mod pch;
 pub mod sanitize;
 
 use self::logger::ProgramError;

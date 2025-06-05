@@ -6,6 +6,7 @@ use prompt_fuzz::{
 };
 
 fn main() -> Result<()> {
+    dotenv::dotenv().ok();
     config::init_openai_env();
     config::parse_config()?;
     init_logger()?;

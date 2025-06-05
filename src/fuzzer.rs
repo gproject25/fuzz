@@ -13,7 +13,6 @@ use crate::{
     program::{libfuzzer::LibFuzzer, rand::rand_comb_len, serde::Deserializer, Program},
     request::{
         self,
-        openai::openai_billing::get_quota_cost,
         prompt::{load_prompt, Prompt},
     },
 };
@@ -173,7 +172,6 @@ impl Fuzzer {
 
     pub fn is_converge(&self) -> bool {
         if self.quiet_round >= get_config().fuzz_converge_round
-            || get_quota_cost() >= get_config().query_budget
         {
             return true;
         }

@@ -42,7 +42,7 @@ pub fn init_debug_logger() -> Result<()> {
     Ok(())
 }
 
-pub static mut PCH_NAMES: OnceCell<Vec<String>> = OnceCell::new();
+pub static PCH_NAMES: OnceCell<Vec<String>> = OnceCell::new();
 
 #[derive(Debug, thiserror::Error)]
 pub enum FuzzerError {
@@ -88,10 +88,6 @@ pub fn is_critical_err<T>(err: &Result<T>) -> Critical {
                 {
                     log::warn!("Rate limit reached! Sleep 1 minute for API weak up.");
                     std::thread::sleep(std::time::Duration::from_secs(60));
-                    return Critical::NonCritical;
-                }
-                if api_err.r#type == "cf_bad_gateway" {
-                    log::warn!("502 Bad gateway!");
                     return Critical::NonCritical;
                 }
                 if api_err

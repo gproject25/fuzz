@@ -1,6 +1,5 @@
 use std::{
-    path::PathBuf,
-    time::{self, Instant},
+    path::PathBuf, sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}, time::{self, Instant}
 };
 
 use eyre::Result;
@@ -394,16 +393,16 @@ impl GlobalTimeLogger {
     }
 }
 
-pub static mut GTL: OnceCell<GlobalTimeLogger> = OnceCell::new();
+pub static GTL: OnceCell<RwLock<GlobalTimeLogger>> = OnceCell::new();
 
 pub fn init_gtl() {
-    unsafe { GTL.set(GlobalTimeLogger::new()).unwrap() };
+    GTL.set(RwLock::new(GlobalTimeLogger::new())).unwrap();
 }
 
-pub fn get_gtl() -> &'static GlobalTimeLogger {
-    unsafe { GTL.get().expect("GTL should not be None") }
+pub fn get_gtl() -> RwLockReadGuard<'static, GlobalTimeLogger> {
+    GTL.get().expect("GTL should not be None").read().unwrap()
 }
 
-pub fn get_gtl_mut() -> &'static mut GlobalTimeLogger {
-    unsafe { GTL.get_mut().expect("GTL should not be None") }
+pub fn get_gtl_mut() -> RwLockWriteGuard<'static, GlobalTimeLogger> {
+    GTL.get().expect("GTL should not be None").write().unwrap()
 }
