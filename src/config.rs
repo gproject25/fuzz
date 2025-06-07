@@ -15,11 +15,6 @@ pub static OPENAI_CONTEXT_LIMIT: OnceCell<Option<u32>> = OnceCell::new();
 
 pub static OPENAI_PROXY_BASE: OnceCell<Option<String>> = OnceCell::new();
 
-// Incoder configure options
-
-pub const INCODER_PATH: &str = "src/extern/incoder.py";
-
-pub const INCODER_MODEL: i32 = 0;
 
 // General model configure options.
 pub const MUTATE_LINE: usize = 3;
@@ -52,27 +47,25 @@ pub const MAX_FUZZ_TIME: u64 = 600;
 pub const MAX_CONTEXT_APIS: usize = 100;
 
 // recover the report of UBSan, or we can use UBSAN_OPTIONS=symbolize=1:print_stacktrace=1:halt_on_error=1 instead.
-pub const SANITIZER_FLAGS: [&str; 8] = [
+pub const SANITIZER_FLAGS: [&str; 7] = [
     "-fsanitize=fuzzer",
     "-g",
     "-O1",
     "-fsanitize=address,undefined",
     "-ftrivial-auto-var-init=zero",
-    "-enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang",
     "-fsanitize-trap=undefined",
     "-fno-sanitize-recover=undefined",
 ];
 
-pub const FUZZER_FLAGS: [&str; 6] = [
+pub const FUZZER_FLAGS: [&str; 5] = [
     "-fsanitize=fuzzer",
     "-O1",
     "-g",
     "-fsanitize=address,undefined",
     "-ftrivial-auto-var-init=zero",
-    "-enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang",
 ];
 
-pub const COVERAGE_FLAGS: [&str; 10] = [
+pub const COVERAGE_FLAGS: [&str; 9] = [
     "-g",
     "-fsanitize=fuzzer",
     "-fprofile-instr-generate",
@@ -82,7 +75,6 @@ pub const COVERAGE_FLAGS: [&str; 10] = [
     "-Wl,-lm",
     "-Wno-unused-command-line-argument",
     "-ftrivial-auto-var-init=zero",
-    "-enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang",
 ];
 
 pub const ASAN_OPTIONS: [&str; 2] = ["exitcode=168", "alloc_dealloc_mismatch=0"];
@@ -225,7 +217,7 @@ impl Config {
         let config = Config {
             target: target.to_string(),
             n_sample: 10,
-            temperature: 0.9,
+            temperature: 0.6,
             cores: 10,
             max_cores: 0,
             fuzz_round_succ: 1,
