@@ -9,8 +9,13 @@ PromptFuzz is currently regarded as the leading approach for generating fuzz dri
 
 
 
+## Relase Notes:
+- Upgrade **Clang** and **LLVM** versions to 18! (2025-06-07)
+- Upgrade **async_openai** sdk version to 0.28 to support OPENAI interface new features. (2025-06-05)
+- Support **OpenAI specification**! You can use any LLMs via the standard OPENAI specification. （2025-05-02)
+
 ## ✨Features
-- **Multiply LLM support**: Supports the general LLMs: Codex, Incoder, ChatGPT, and GPT4 (Currently tested on ChatGPT).
+- **Multiply LLM support**: Supports any LLM invocation via the OPENAI Interface Specificatio!.
 - **Context-based Prompt**: Construct LLM prompts with the automatically extracted library context.
 - **Powerful Sanitization**: The program's syntax, semantics, behavior, and coverage are thoroughly analyzed to sanitize the problematic programs.
 - **Prioritized Mutation**: Prioritizes mutating the library API combinations within LLM's prompts to explore complex interrelationships, guided by code coverage.
