@@ -9,26 +9,15 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub struct Prompt {
-    pub kind: PromptKind,
+    pub gadgets: Vec<&'static FuncGadget>,
 }
 
-#[derive(Clone, Debug)]
-pub enum PromptKind {
-    /// generate via prefix
-    Generate(Vec<&'static FuncGadget>),
-    /// infill via prefix and suffix
-    Infill(String, String),
-    /// not implemented
-    Others,
-}
-
-impl Default for Prompt {
-    fn default() -> Self {
-        Self {
-            kind: PromptKind::Others,
-        }
+impl Prompt {
+    pub fn new(gadgets: Vec<&'static FuncGadget>) -> Self {
+        Self { gadgets }
     }
 }
+
 
 impl Display for Prompt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -73,78 +62,45 @@ pub fn update_prompt_counter(combination: &Vec<&FuncGadget>) {
 impl Prompt {
     /// Format the generative style prompt
     pub fn from_combination(combination: Vec<&'static FuncGadget>) -> Self {
-        let mut prompt = Prompt::default();
         update_prompt_counter(&combination);
         save_prompt(&combination);
         log::info!("selected combination: {}", combination_to_str(&combination));
-        prompt.kind = PromptKind::Generate(combination);
-        prompt
+        Prompt::new(combination)
     }
 
     pub fn set_combination(&mut self, combination: Vec<&'static FuncGadget>) {
         log::info!("set combination: {}", combination_to_str(&combination));
         save_prompt(&combination);
         update_prompt_counter(&combination);
-        self.kind = PromptKind::Generate(combination)
+        self.gadgets = combination
     }
 
-    /// Format the infill style prompt
-    pub fn infill_kind(prefix: &str, suffix: &str) -> Self {
-        Prompt {
-            kind: PromptKind::Infill(prefix.to_owned(), suffix.to_owned()),
-        }
-    }
 
     /// from generative prompt to API combination vec.
     pub fn get_combination(&self) -> eyre::Result<Vec<&'static FuncGadget>> {
-        match &self.kind {
-            PromptKind::Generate(comb) => Ok(comb.clone()),
-            _ => eyre::bail!("error to get the prompt combination."),
-        }
+        Ok(self.gadgets.clone())
     }
 
     pub fn get_combination_mut(&mut self) -> &mut Vec<&'static FuncGadget> {
-        match &mut self.kind {
-            PromptKind::Generate(comb) => comb,
-            _ => unreachable!(),
-        }
+        &mut self.gadgets
     }
 
     /// format to chat kind prompt.
     pub fn to_chatgpt_message(&self) -> Vec<ChatCompletionRequestMessage> {
-        match &self.kind {
-            PromptKind::Generate(combination) => {
-                let ctx = get_combination_definitions(combination);
-                let sys_msg = get_sys_gen_message(ctx);
-                log::trace!("System role: {sys_msg}");
-                let user_msg = config::get_user_chat_template()
-                    .replace("{combinations}", &combination_to_str(combination));
-                let sys_msg = ChatCompletionRequestSystemMessageArgs::default()
-                    .content(sys_msg)
-                    .build().unwrap()
-                    .into();
-                let user_msg = ChatCompletionRequestUserMessageArgs::default()
-                    .content(user_msg)
-                    .build().unwrap()
-                    .into();
-                vec![sys_msg, user_msg]
-            }
-            PromptKind::Infill(prefix, suffix) => {
-                let sys_msg = config::SYSTEM_INFILL_TEMPLATE;
-                let user_msg: String =
-                    [prefix.clone(), "[INSERT]".to_string(), suffix.clone()].join("");
-                let sys_msg = ChatCompletionRequestSystemMessageArgs::default()
-                    .content(sys_msg)
-                    .build().unwrap()
-                    .into();
-                let user_msg = ChatCompletionRequestUserMessageArgs::default()
-                    .content(user_msg)
-                    .build().unwrap()
-                    .into();
-                vec![sys_msg, user_msg]
-            }
-            PromptKind::Others => unreachable!("ChatGPT prompt cannot be Others kind."),
-        }
+        let ctx = get_combination_definitions(&self.gadgets);
+        let sys_msg = get_sys_gen_message(ctx);
+        log::trace!("System role: {sys_msg}");
+        let user_msg = config::get_user_chat_template()
+            .replace("{combinations}", &combination_to_str(&self.gadgets));
+        let sys_msg = ChatCompletionRequestSystemMessageArgs::default()
+            .content(sys_msg)
+            .build().unwrap()
+            .into();
+        let user_msg = ChatCompletionRequestUserMessageArgs::default()
+            .content(user_msg)
+            .build().unwrap()
+            .into();
+        vec![sys_msg, user_msg]
     }
 
 }
@@ -238,31 +194,12 @@ use crate::{
             ctype::get_unsugared_unqualified_type, dump_func_gadgets_tostr, get_func_gadget,
             typed_gadget::get_type_definition, FuncGadget,
         },
-        serde::{Deserialize, Deserializer, Serialize},
+        serde::Serialize,
     },
 };
 impl Serialize for Prompt {
     fn serialize(&self) -> String {
-        match self.kind {
-            PromptKind::Generate(_) => String::from("Prompt { kind: Generate } "),
-            PromptKind::Infill(_, _) => String::from("Prompt { kind: Infill } "),
-            PromptKind::Others => String::from("Prompt { kind: Others } "),
-        }
+        combination_to_str(&self.gadgets)
     }
 }
 
-impl Deserialize for Prompt {
-    fn deserialize(de: &mut Deserializer) -> eyre::Result<Self> {
-        de.eat_token("Prompt")?;
-        de.eat_token("{")?;
-        de.eat_token("kind:")?;
-        let prompt = match de.next_token()? {
-            "Generate" => Prompt::from_combination(vec![]),
-            "Infill" => Prompt::infill_kind("<PlaceHolder>", "<PlaceHolder>"),
-            "Others" => Prompt::default(),
-            _ => eyre::bail!("error format Prompt: {}", de.input),
-        };
-        de.eat_token("}")?;
-        Ok(prompt)
-    }
-}

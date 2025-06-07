@@ -282,8 +282,6 @@ pub const SYSTEM_GEN_TEMPLATE: &str = "Act as a C++ langauge Developer, write a 
 The prototype of fuzz dirver is: `extern \"C\" int LLVMFuzzerTestOneInput(const uint8_t data, size_t size)`.
 \n";
 
-pub const SYSTEM_INFILL_TEMPLATE: &str = "As a C++ language developer, you need to fill in the missing part of program provided by the user. The code that needs to be filled in is denoted as [INSERT]. Please ouput the text you filled in the location of [INSERT] and do no explain.";
-
 /// Template of providing the context of library's structures.
 pub const SYSTEM_CONTEXT_TEMPLATE: &str = "
 The fuzz dirver should focus on the usage of the {project} library, and several essential aspects of the library are provided below.
@@ -303,7 +301,6 @@ Here are the custom types declared in {project}. Ensure that the variables you u
 ----------------------
 ";
 
-/// Template of infill prompt in user role.
 pub const USER_GEN_TEMPLATE: &str = "Create a C++ language program step by step by using {project} library APIs and following the instructions below:
 1. Here are several APIs in {project}. Specific an event that those APIs could achieve together, if the input is a byte stream of {project}' output data.
 {combinations};
