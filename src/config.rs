@@ -38,7 +38,7 @@ pub const SANITIZATION_TIMEOUT: u64 = 1200;
 
 pub const MIN_FUZZ_TIME: u64 = 60;
 
-pub const MAX_FUZZ_TIME: u64 = 120;
+pub const MAX_FUZZ_TIME: u64 = 600;
 
 pub const MAX_CONTEXT_APIS: usize = 100;
 

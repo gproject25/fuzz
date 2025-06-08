@@ -8,9 +8,9 @@ use prompt_fuzz::{
 fn main() -> Result<()> {
     dotenv::dotenv().ok();
     config::init_openai_env();
-    //config::parse_config()?;
-    config::Config::init_test("cJSON");
-    //init_logger()?;
+    config::parse_config()?;
+    //config::Config::init_test("cJSON");
+    init_logger()?;
     let mut fuzzer = Fuzzer::new()?;
     fuzzer.fuzz_loop()?;
     if get_config().fuzzer_run {
