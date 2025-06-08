@@ -7,10 +7,6 @@ pub const CONNECT_TIMEOUT: u64 = 1;
 // LLM Service Interface configure options
 pub static OPENAI_MODEL_NAME: OnceCell<String> = OnceCell::new();
 
-pub static OPENAI_INPUT_PRICE: OnceCell<Option<f32>> = OnceCell::new();
-
-pub static OPENAI_OUTPUT_PRICE: OnceCell<Option<f32>> = OnceCell::new();
-
 pub static OPENAI_CONTEXT_LIMIT: OnceCell<Option<u32>> = OnceCell::new();
 
 pub static OPENAI_PROXY_BASE: OnceCell<Option<String>> = OnceCell::new();
@@ -83,14 +79,6 @@ pub fn get_openai_model_name() -> String {
     OPENAI_MODEL_NAME.get().unwrap().to_string()
 }
 
-pub fn get_openai_input_price() -> &'static Option<f32> {
-    OPENAI_INPUT_PRICE.get().unwrap()
-}
-
-pub fn get_openai_output_price() -> &'static Option<f32> {
-    OPENAI_OUTPUT_PRICE.get().unwrap()
-}
-
 pub fn get_openai_context_limit() -> &'static Option<u32> {
     OPENAI_CONTEXT_LIMIT.get().unwrap()
 }
@@ -103,14 +91,6 @@ pub fn get_openai_proxy() -> &'static Option<String> {
 pub fn init_openai_env() {
     let model = std::env::var("OPENAI_MODEL_NAME").unwrap_or_else(|_| panic!("OPENAI_MODEL_NAME not set"));
 
-    let input_price =  std::env::var("OPENAI_INPUT_PRICE")
-        .ok()
-        .and_then(|s| s.parse::<f32>().ok());
-
-    let output_price =  std::env::var("OPENAI_OUTPUT_PRICE")
-        .ok()
-        .and_then(|s| s.parse::<f32>().ok());
-
     let context_limit =  std::env::var("OPENAI_CONTEXT_LIMIT")
         .ok()
         .and_then(|s| s.parse::<u32>().ok());
@@ -120,8 +100,6 @@ pub fn init_openai_env() {
         .and_then(|s| s.parse::<String>().ok());
 
     OPENAI_MODEL_NAME.set(model).unwrap();
-    OPENAI_INPUT_PRICE.set(input_price).unwrap();
-    OPENAI_OUTPUT_PRICE.set(output_price).unwrap();
     OPENAI_CONTEXT_LIMIT.set(context_limit).unwrap();
     OPENAI_PROXY_BASE.set(proxy_base).unwrap();
 }
@@ -193,9 +171,6 @@ pub struct Config {
     /// How number of round without new coverage is considered as converge.
     #[arg(long = "fc", default_value = "10")]
     pub fuzz_converge_round: usize,
-    /// The budget of token quota of this execution, default is $5.00.
-    #[arg(short, long, default_value = "5.00")]
-    pub query_budget: f32,
     /// number of cores used to parallely run the fuzzers.
     #[arg(short, long, default_value = "1")]
     pub cores: usize,
@@ -226,7 +201,6 @@ impl Config {
             recheck: false,
             fuzzer_run: false,
             disable_power_schedule: false,
-            query_budget: 5.00,
         };
         let _ = CONFIG_INSTANCE.set(RwLock::new(config));
         crate::init_debug_logger().unwrap();
@@ -282,8 +256,6 @@ pub const SYSTEM_GEN_TEMPLATE: &str = "Act as a C++ langauge Developer, write a 
 The prototype of fuzz dirver is: `extern \"C\" int LLVMFuzzerTestOneInput(const uint8_t data, size_t size)`.
 \n";
 
-pub const SYSTEM_INFILL_TEMPLATE: &str = "As a C++ language developer, you need to fill in the missing part of program provided by the user. The code that needs to be filled in is denoted as [INSERT]. Please ouput the text you filled in the location of [INSERT] and do no explain.";
-
 /// Template of providing the context of library's structures.
 pub const SYSTEM_CONTEXT_TEMPLATE: &str = "
 The fuzz dirver should focus on the usage of the {project} library, and several essential aspects of the library are provided below.
@@ -303,7 +275,6 @@ Here are the custom types declared in {project}. Ensure that the variables you u
 ----------------------
 ";
 
-/// Template of infill prompt in user role.
 pub const USER_GEN_TEMPLATE: &str = "Create a C++ language program step by step by using {project} library APIs and following the instructions below:
 1. Here are several APIs in {project}. Specific an event that those APIs could achieve together, if the input is a byte stream of {project}' output data.
 {combinations};

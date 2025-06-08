@@ -92,10 +92,16 @@ impl Observer {
 
     // Unique branch is the branch that have not been triggered before.
     pub fn has_unique_branch(&mut self, coverage: &CodeCoverage) -> HashMap<String, Vec<Branch>> {
-        let mut config = CONFIG_INSTANCE.get().unwrap().write().unwrap();
-        config.exponent_branch = false;
+        {
+            let mut config = CONFIG_INSTANCE.get().unwrap().write().unwrap();
+            config.exponent_branch = false;
+        }
+
         let unique_branche_states = self.branches.has_new(coverage);
-        config.exponent_branch = true;
+        {
+            let mut config = CONFIG_INSTANCE.get().unwrap().write().unwrap();
+            config.exponent_branch = true;
+        }
         let mut unique_branches: HashMap<String, Vec<Branch>> = HashMap::new();
         for (func, branch_states) in unique_branche_states {
             let branches: Vec<Branch> = branch_states
