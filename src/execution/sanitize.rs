@@ -1,5 +1,5 @@
 use crate::{
-    config::{get_config, get_library_name},
+    config::get_library_name,
     deopt::utils::get_file_dirname,
     feedback::clang_coverage::{
         utils::{dump_fuzzer_coverage, sanitize_by_fuzzer_coverage},
@@ -168,7 +168,7 @@ impl Executor {
             std::fs::write(&temp_path, content)?;
             program_paths.push(temp_path);
         }
-        let res = self.concurrent_check(&program_paths, get_config().cores)?;
+        let res = self.concurrent_check_batch(&program_paths)?;
         // print the time usage of the sanitization
         utils::print_san_cost(&program_paths)?;
 
@@ -195,14 +195,9 @@ impl Executor {
     pub fn concurrent_check_batch(
         &self,
         programs: &[PathBuf],
-        core: usize,
     ) -> Result<Vec<Option<ProgramError>>> {
         let mut childs = Vec::new();
-        for i in 0..core {
-            if i >= programs.len() {
-                break;
-            }
-            let program = programs.get(i).unwrap();
+        for program in programs {
             let child = Command::new("cargo")
                 .env("RUST_BACKTRACE", "full")
                 .arg("run")
@@ -241,25 +236,6 @@ impl Executor {
         Ok(has_errs)
     }
 
-    ///Utilize multi-process to check the correctness of programs concurrently.
-    pub fn concurrent_check(
-        &self,
-        programs: &[PathBuf],
-        core: usize,
-    ) -> Result<Vec<Option<ProgramError>>> {
-        let mut has_errs = Vec::new();
-        let mut batch = Vec::new();
-        for (i, program) in programs.iter().enumerate() {
-            let i = i + 1;
-            batch.push(program.clone());
-            if i % core == 0 || i == programs.len() {
-                let res = self.concurrent_check_batch(&batch, core)?;
-                has_errs.extend(res);
-                batch.clear();
-            }
-        }
-        Ok(has_errs)
-    }
 
     // Evolving the fuzzing corpus by finding the new coverage corpus files and merge them in shared corpus.
     fn evolve_corpus(&self, program_path: &Path) -> Result<()> {

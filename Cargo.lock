@@ -1657,6 +1657,7 @@ dependencies = [
  "dotenv",
  "eyre",
  "flexi_logger",
+ "futures",
  "log",
  "num_cpus",
  "once_cell",

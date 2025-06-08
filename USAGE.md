@@ -70,7 +70,7 @@ user@ubuntu$ export OPENAI_PROXY_BASE=https://openai.proxy.com/v1
 
 PromptFuzz generates fuzz drivers in a fuzz loop. There are several options that can be tuned in the configuration of promptfuzz.
 
-Typically, the only options that need to be actively set are `-c` and `-r`. The `-c` option determines the number of cores to be used for sanitization. Enabling the `-r` option will periodically re-check the correctness of the seed programs, reducing false positives but also introducing some extra overhead.
+Typically, the only options that need to be actively set are `-c` and `-r`. The `-c` option determines the number of cores to be used for sanitization. For numerous fuzzing corpus, increse the number of cores could significantly decrease the time used for execution sanitization. Enabling the `-r` option will periodically re-check the correctness of the seed programs, reducing false positives but also introducing some extra overhead.
 
 For instance, the following command is sufficient to perform fuzzing on libaom:
 ```

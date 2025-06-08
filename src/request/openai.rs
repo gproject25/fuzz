@@ -1,7 +1,7 @@
 use std::{process::Child, time::Duration};
 
 use crate::{
-    config::{self, get_openai_proxy},
+    config::{self, get_config, get_openai_proxy},
     is_critical_err,
     program::Program,
     FuzzerError,
@@ -13,6 +13,7 @@ use async_openai::{
 };
 use eyre::Result;
 use once_cell::sync::OnceCell;
+use futures::future::join_all;
 
 
 use super::Handler;
@@ -33,14 +34,18 @@ impl Default for OpenAIHanler {
 }
 
 impl Handler for OpenAIHanler {
+    /// Generate `SAMPLE_N` programs by chatting with instructions.
 
     fn generate(&self, prompt: &super::prompt::Prompt) -> eyre::Result<Vec<Program>> {
         let start = std::time::Instant::now();
         let chat_msgs = prompt.to_chatgpt_message();
-        let mut programs = self.rt.block_on(generate_programs_by_chat(chat_msgs))?;
-        for program in programs.iter_mut() {
-            program.combination = prompt.get_combination()?;
+        let mut futures = Vec::new();
+        for _ in 0..get_config().n_sample {
+            let future = generate_program_by_chat(chat_msgs.clone());
+            futures.push(future);
         }
+        let results = self.rt.block_on(join_all(futures));
+        let programs = results.into_iter().map(|r| r.unwrap()).collect();
         log::debug!("LLM Generate time: {}s", start.elapsed().as_secs());
         Ok(programs)
    
@@ -113,21 +118,17 @@ async fn get_chat_response(
     Err(FuzzerError::RetryError(format!("{request:?}"), config::RETRY_N).into())
 }
 
-/// Generate `SAMPLE_N` programs by chatting with instructions.
-pub async fn generate_programs_by_chat(
+pub async fn generate_program_by_chat(
     chat_msgs: Vec<ChatCompletionRequestMessage>,
-) -> Result<Vec<Program>> {
+) -> Result<Program> {
     let request = create_chat_request(chat_msgs, None)?;
     let respond = get_chat_response(request).await?;
 
-    let mut programs: Vec<Program> = Vec::new();
-    for choice in respond.choices {
-        let content = choice.message.content;
-        let content = strip_code_wrapper(&content.unwrap());
-        let program = Program::new(&content);
-        programs.push(program);
-    }
-    Ok(programs)
+    let choice = respond.choices.first().unwrap();
+    let content = choice.message.content.as_ref().unwrap();
+    let content = strip_code_wrapper(&content);
+    let program = Program::new(&content);
+    Ok(program)
 }
 
 

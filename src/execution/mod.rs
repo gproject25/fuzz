@@ -819,9 +819,8 @@ fn parse_cov_from_log(log_file: &Path) -> eyre::Result<Option<usize>> {
 
 pub fn max_cpu_count() -> usize {
     let max_cores = get_config().max_cores;
-    let cpu_count = num_cpus::get() - 1;
-    if max_cores >= cpu_count || max_cores == 0 {
-        cpu_count
+    if max_cores == 0 {
+        num_cpus::get() - 1
     } else {
         max_cores
     }
@@ -844,7 +843,7 @@ mod tests {
             let entry = entry?.path();
             programs.push(entry);
         }
-        let res = executor.concurrent_check(&programs, 2)?;
+        let res = executor.concurrent_check_batch(&programs)?;
         assert_eq!(programs.len(), res.len());
         println!("{res:#?}");
         Ok(())
