@@ -46,6 +46,9 @@ pub fn get_func_gadgets() -> &'static Vec<FuncGadget> {
         }
         func_gadget::dump_func_gadgets(&gadgets, &deopt).unwrap();
         log::debug!("Parsed {} function gadgets.", gadgets.len());
+        if gadgets.is_empty() {
+            panic!("Cannot extract function gadgets! Please check whether your library building was sucessful!")
+        }
         gadgets
     })
 }
