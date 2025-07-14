@@ -9,6 +9,7 @@ use crate::{config::get_library_name, deopt::Deopt, execution::Executor};
 use eyre::Result;
 use once_cell::sync::OnceCell;
 use std::{
+    collections::{HashMap, HashSet, VecDeque},
     path::Path,
     process::{Command, Stdio},
 };
@@ -97,7 +98,7 @@ impl Executor {
             .unwrap();
         let base_name = [".", base_name].concat();
         let output = String::from_utf8_lossy(&output.stderr).to_string();
-        let mut tree = parse_dependency_tree(&output, &base_name)?;
+        let mut tree = parse_dependency_tree(&output, &base_name, &header_path)?;
         tree.get_clean_root(&self.deopt);
         Ok(tree)
     }
@@ -128,7 +129,7 @@ fn get_layer_child(layered_nodes: Vec<(usize, &str)>, depth: usize) -> Vec<TreeN
     childs
 }
 
-fn parse_dependency_tree(output: &str, base_name: &str) -> Result<TreeNode> {
+fn parse_dependency_tree(output: &str, base_name: &str, header_path: &Path) -> Result<TreeNode> {
     let mut node_layer: Vec<(usize, &str)> = Vec::new();
     for line in output.lines() {
         let sep = line
@@ -136,7 +137,12 @@ fn parse_dependency_tree(output: &str, base_name: &str) -> Result<TreeNode> {
             .ok_or_else(|| eyre::eyre!("Expect an spece in line: {line}"))?;
         let layer = sep;
         let header = line[sep..].trim();
-        node_layer.push((layer, header));
+        if !header.starts_with(header_path.to_str().unwrap()) {
+            continue;
+        }
+        if header.ends_with(".h") || header.ends_with(".hpp") || header.ends_with(".hxx") {
+            node_layer.push((layer, header));
+        }
     }
     let mut tree = TreeNode::new(base_name.to_owned());
     for child in get_layer_child(node_layer, 1) {
@@ -145,40 +151,151 @@ fn parse_dependency_tree(output: &str, base_name: &str) -> Result<TreeNode> {
     Ok(tree)
 }
 
-fn is_header_in_tree(tree: &TreeNode, name: &str) -> bool {
+
+fn get_independent_headers(trees: &[TreeNode]) -> Result<Vec<&str>> {
+    
+    // 构建依赖图：header -> 依赖它的headers
+    let mut dependency_graph: HashMap<&str, HashSet<&str>> = HashMap::new();
+    let mut all_headers: HashSet<&str> = HashSet::new();
+    
+    // 收集所有header名称
+    for tree in trees {
+        collect_all_headers(tree, &mut all_headers);
+    }
+    
+    // 初始化依赖图
+    for &header in &all_headers {
+        dependency_graph.insert(header, HashSet::new());
+    }
+    
+    // 构建依赖关系：如果header A包含header B，则B依赖A
+    for tree in trees {
+        build_dependency_graph(tree, tree.get_name(), &mut dependency_graph);
+    }
+    
+    // 使用拓扑排序来找到顶层header，同时处理循环依赖
+    find_top_level_headers_with_cycles(&dependency_graph, &all_headers)
+}
+
+fn collect_all_headers<'a>(tree: &'a TreeNode, all_headers: &mut HashSet<&'a str>) {
     let mut worklist = WorkList::new();
     worklist.push(tree);
+    
     while !worklist.empty() {
         let node = worklist.pop();
-        if node.get_name() == name {
-            return true;
-        }
+        all_headers.insert(node.get_name());
+        
         for child in &node.children {
             worklist.push(child);
         }
     }
-    false
 }
 
-fn get_independent_headers(trees: &[TreeNode]) -> Result<Vec<&str>> {
-    let mut indep_headers = Vec::new();
-    for (i, tree) in trees.iter().enumerate() {
-        let name = tree.get_name();
-        let mut find = false;
-        for (j, j_tree) in trees.iter().enumerate() {
-            if j == i {
-                continue;
+fn build_dependency_graph<'a>(tree: &'a TreeNode, root_name: &'a str, dependency_graph: &mut HashMap<&'a str, HashSet<&'a str>>) {
+    let mut worklist = WorkList::new();
+    worklist.push(tree);
+    
+    while !worklist.empty() {
+        let node = worklist.pop();
+        
+        // 对于每个子节点，表示它依赖当前根节点
+        for child in &node.children {
+            let child_name = child.get_name();
+            if let Some(deps) = dependency_graph.get_mut(child_name) {
+                deps.insert(root_name);
             }
-            if is_header_in_tree(j_tree, name) {
-                find = true;
-                break;
-            }
-        }
-        if !find {
-            indep_headers.push(name);
+            worklist.push(child);
         }
     }
-    Ok(indep_headers)
+}
+
+fn find_top_level_headers_with_cycles<'a>(dependency_graph: &HashMap<&'a str, HashSet<&'a str>>, all_headers: &HashSet<&'a str>) -> Result<Vec<&'a str>> {
+    
+    // 计算每个header的入度（被多少个header依赖）
+    let mut in_degree: HashMap<&str, usize> = HashMap::new();
+    for &header in all_headers {
+        in_degree.insert(header, 0);
+    }
+    
+    for (_header, dependents) in dependency_graph {
+        for &dependent in dependents {
+            *in_degree.entry(dependent).or_insert(0) += 1;
+        }
+    }
+    
+    // 使用Kahn算法进行拓扑排序，找到入度为0的节点
+    let mut queue = VecDeque::new();
+    let mut result = Vec::new();
+    let mut visited = HashSet::new();
+    
+    // 首先添加所有入度为0的节点
+    for (&header, &degree) in &in_degree {
+        if degree == 0 {
+            queue.push_back(header);
+        }
+    }
+    
+    // 处理拓扑排序
+    while let Some(header) = queue.pop_front() {
+        if visited.contains(header) {
+            continue;
+        }
+        visited.insert(header);
+        result.push(header);
+        
+        // 减少依赖此header的其他header的入度
+        if let Some(dependents) = dependency_graph.get(header) {
+            for &dependent in dependents {
+                if let Some(degree) = in_degree.get_mut(dependent) {
+                    *degree -= 1;
+                    if *degree == 0 && !visited.contains(dependent) {
+                        queue.push_back(dependent);
+                    }
+                }
+            }
+        }
+    }
+    
+    // 处理循环依赖：对于未访问的节点，选择字典序最小的作为代表
+    let mut cycle_representatives = Vec::new();
+    for &header in all_headers {
+        if !visited.contains(header) {
+            // 找到这个循环中字典序最小的header
+            let mut cycle_nodes = Vec::new();
+            let mut temp_visited = HashSet::new();
+            find_cycle_nodes(header, dependency_graph, &mut cycle_nodes, &mut temp_visited);
+            
+            if !cycle_nodes.is_empty() {
+                cycle_nodes.sort();
+                let representative = cycle_nodes[0];
+                if !visited.contains(representative) {
+                    cycle_representatives.push(representative);
+                    // 标记整个循环中的所有节点为已访问
+                    for &node in &cycle_nodes {
+                        visited.insert(node);
+                    }
+                }
+            }
+        }
+    }
+    
+    // 合并结果
+    result.extend(cycle_representatives);
+    Ok(result)
+}
+
+fn find_cycle_nodes<'a>(start: &'a str, dependency_graph: &HashMap<&'a str, HashSet<&'a str>>, cycle_nodes: &mut Vec<&'a str>, temp_visited: &mut HashSet<&'a str>) {
+    if temp_visited.contains(start) {
+        return;
+    }
+    temp_visited.insert(start);
+    cycle_nodes.push(start);
+    
+    if let Some(dependents) = dependency_graph.get(start) {
+        for &dependent in dependents {
+            find_cycle_nodes(dependent, dependency_graph, cycle_nodes, temp_visited);
+        }
+    }
 }
 
 fn is_a_lib_header(name: &str) -> bool {

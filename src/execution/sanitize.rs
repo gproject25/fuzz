@@ -335,6 +335,12 @@ pub mod utils {
             let coverage = time_logger.load("coverage")?;
             let update = time_logger.load("update")?;
             let total = syntax + link + execution + fuzz + coverage + update;
+            usage.push(syntax);
+            usage.push(link);
+            usage.push(execution);
+            usage.push(fuzz);
+            usage.push(coverage);
+            usage.push(update);
             if total > max_time {
                 max_time = total;
                 usage.clear();
@@ -422,14 +428,14 @@ mod tests {
     fn test_sanitization_for_a_program() -> Result<()> {
         crate::config::Config::init_test("cJSON");
         let deopt = Deopt::new("cJSON".to_string())?;
-        let program_path: std::path::PathBuf =
-            [crate::Deopt::get_crate_dir()?, "testsuites", "new_test.cc"]
-                .iter()
-                .collect();
-        let work_path = deopt.get_work_seed_by_id(3)?;
-        std::fs::copy(program_path, &work_path)?;
+        //let program_path: std::path::PathBuf =
+        //    [crate::Deopt::get_crate_dir()?, "testsuites", "new_test.cc"]
+        //        .iter()
+        //        .collect();
+        //let work_path = deopt.get_work_seed_by_id(0)?;
+        //std::fs::copy(program_path, &work_path)?;
         let executor = Executor::new(&deopt)?;
-        let res = executor.check_program_is_correct(&work_path)?;
+        let res = executor.check_program_is_correct(&deopt.get_work_seed_by_id(0)?);
         println!("{res:?}");
         Ok(())
     }

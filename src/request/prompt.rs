@@ -38,6 +38,15 @@ pub fn set_prompt_counter_value(key: String, value: u32) {
     guard.insert(key, value);
 }
 
+pub fn save_prompt_counter() {
+    let deopt = Deopt::new(get_library_name()).unwrap();
+    let counter_path: PathBuf = [deopt.get_library_misc_dir().unwrap(), "prompt_counter.json".into()]
+        .iter()
+        .collect();
+    let guard = COUNTER.get_or_init(|| RwLock::new(HashMap::new())).read().unwrap();
+    let json = serde_json::to_string(&*guard).unwrap();
+    std::fs::write(counter_path, json).unwrap();
+}
 
 pub fn load_prompt_counter(deopt: &Deopt) -> HashMap<String, u32> {
     let counter_path: PathBuf = [
@@ -56,6 +65,7 @@ pub fn update_prompt_counter(combination: &Vec<&FuncGadget>) {
         let func_name = func.get_func_name();
         let count = get_prompt_counter_value(func_name).unwrap_or(0);
         set_prompt_counter_value(func_name.to_string(), count + 1);
+        save_prompt_counter();
     }
 }
 

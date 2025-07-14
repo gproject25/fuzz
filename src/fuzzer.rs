@@ -1,5 +1,5 @@
 use crate::{
-    config::{self, get_config, get_library_name},
+    config::{self, get_config, get_library_name, get_handler_type, HandlerType},
     deopt::Deopt,
     execution::{
         logger::{init_gtl, ProgramLogger},
@@ -34,7 +34,17 @@ impl Fuzzer {
         let deopt = Deopt::new(get_library_name())?;
         let executor = Executor::new(&deopt)?;
         let observer = Observer::new(&deopt);
-        let handler: Box<dyn request::Handler> = Box::<request::openai::OpenAIHanler>::default();
+        // 根据配置选择handler类型
+        let handler: Box<dyn request::Handler> = match get_handler_type() {
+            HandlerType::Openai => {
+                log::info!("Using OpenAI handler");
+                Box::<request::openai::OpenAIHanler>::default()
+            }
+            HandlerType::Http => {
+                log::info!("Using HTTP handler");
+                Box::new(request::http::HttpHandler::new().unwrap())
+            }
+        };
 
         init_gtl();
         let fuzzer = Self {
