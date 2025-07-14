@@ -137,7 +137,12 @@ fn parse_dependency_tree(output: &str, base_name: &str) -> Result<TreeNode> {
             .ok_or_else(|| eyre::eyre!("Expect an spece in line: {line}"))?;
         let layer = sep;
         let header = line[sep..].trim();
-        node_layer.push((layer, header));
+        if header.contains("/usr/lib/") {
+            continue;
+        }
+        if header.ends_with(".h") || header.ends_with(".hpp") || header.ends_with(".hxx") {
+            node_layer.push((layer, header));
+        }
     }
     let mut tree = TreeNode::new(base_name.to_owned());
     for child in get_layer_child(node_layer, 1) {

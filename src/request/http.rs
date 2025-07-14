@@ -10,6 +10,38 @@ use futures::future::join_all;
 
 use crate::program::Program;
 
+/// Token使用统计结构
+#[derive(Debug, Clone, Default)]
+pub struct TokenUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+impl TokenUsage {
+    pub fn new(prompt_tokens: u32, completion_tokens: u32, total_tokens: u32) -> Self {
+        Self {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        }
+    }
+    
+    pub fn from_openai_usage(usage: &OpenAIUsage) -> Self {
+        Self {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+        }
+    }
+    
+    pub fn add(&mut self, other: &TokenUsage) {
+        self.prompt_tokens += other.prompt_tokens;
+        self.completion_tokens += other.completion_tokens;
+        self.total_tokens += other.total_tokens;
+    }
+}
+
 /// HTTP客户端配置
 #[derive(Debug, Clone)]
 pub struct HttpClientConfig {
@@ -527,7 +559,7 @@ impl HttpHandler {
     }
     
     /// 异步生成单个程序
-    async fn generate_single_program(&self, messages: Vec<OpenAIMessage>, model: String) -> Result<Program> {
+    async fn generate_single_program(&self, messages: Vec<OpenAIMessage>, model: String) -> Result<(Program, TokenUsage)> {
         let request = HttpClient::build_openai_request(
             &model,
             messages,
@@ -543,8 +575,9 @@ impl HttpHandler {
         
         let content = &response.choices[0].message.content;
         let stripped_content = self.strip_code_wrapper(content);
+        let usage = TokenUsage::from_openai_usage(&response.usage);
         
-        Ok(Program::new(&stripped_content))
+        Ok((Program::new(&stripped_content), usage))
     }
     
     /// 剥离代码包装器（复制自openai.rs）
@@ -611,13 +644,22 @@ impl super::Handler for HttpHandler {
         // 并行执行所有任务
         let results = self.rt.block_on(join_all(futures));
         
-        // 收集结果
-        let programs = results
-            .into_iter()
-            .map(|r| r.unwrap())
-            .collect();
+        let mut programs = Vec::new();
+        let mut total_usage = TokenUsage::default();
         
-        log::debug!("HTTP Client Generate time: {}s", start.elapsed().as_secs());
+        for result in results {
+            let (program, usage) = result?;
+            programs.push(program);
+            total_usage.add(&usage);
+        }
+        
+        let elapsed = start.elapsed();
+        log::info!("HTTP Client Generate time: {}s", elapsed.as_secs());
+        log::info!("HTTP Client Token Usage - Prompt: {}, Completion: {}, Total: {}", 
+                  total_usage.prompt_tokens, 
+                  total_usage.completion_tokens, 
+                  total_usage.total_tokens);
+        
         Ok(programs)
     }
 }

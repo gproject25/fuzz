@@ -18,6 +18,42 @@ use futures::future::join_all;
 
 use super::Handler;
 
+/// Token使用统计结构
+#[derive(Debug, Clone, Default)]
+pub struct TokenUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+impl TokenUsage {
+    pub fn new(prompt_tokens: u32, completion_tokens: u32, total_tokens: u32) -> Self {
+        Self {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        }
+    }
+    
+    pub fn from_response(response: &CreateChatCompletionResponse) -> Self {
+        if let Some(usage) = &response.usage {
+            Self {
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                total_tokens: usage.total_tokens,
+            }
+        } else {
+            Self::default()
+        }
+    }
+    
+    pub fn add(&mut self, other: &TokenUsage) {
+        self.prompt_tokens += other.prompt_tokens;
+        self.completion_tokens += other.completion_tokens;
+        self.total_tokens += other.total_tokens;
+    }
+}
+
 pub struct OpenAIHanler {
     _child: Option<Child>,
     rt: tokio::runtime::Runtime,
@@ -35,7 +71,6 @@ impl Default for OpenAIHanler {
 
 impl Handler for OpenAIHanler {
     /// Generate `SAMPLE_N` programs by chatting with instructions.
-
     fn generate(&self, prompt: &super::prompt::Prompt) -> eyre::Result<Vec<Program>> {
         let start = std::time::Instant::now();
         let chat_msgs = prompt.to_chatgpt_message();
@@ -45,10 +80,24 @@ impl Handler for OpenAIHanler {
             futures.push(future);
         }
         let results = self.rt.block_on(join_all(futures));
-        let programs = results.into_iter().map(|r| r.unwrap()).collect();
-        log::debug!("LLM Generate time: {}s", start.elapsed().as_secs());
+        
+        let mut programs = Vec::new();
+        let mut total_usage = TokenUsage::default();
+        
+        for result in results {
+            let (program, usage) = result?;
+            programs.push(program);
+            total_usage.add(&usage);
+        }
+        
+        let elapsed = start.elapsed();
+        log::info!("OpenAI Generate time: {}s", elapsed.as_secs());
+        log::info!("OpenAI Token Usage - Prompt: {}, Completion: {}, Total: {}", 
+                  total_usage.prompt_tokens, 
+                  total_usage.completion_tokens, 
+                  total_usage.total_tokens);
+        
         Ok(programs)
-   
     }
 }
 
@@ -73,7 +122,6 @@ fn get_client() -> Result<&'static Client<OpenAIConfig>> {
     });
     Ok(client)
 }
-
 
 /// Create a request for a chat prompt
 fn create_chat_request(
@@ -120,15 +168,16 @@ async fn get_chat_response(
 
 pub async fn generate_program_by_chat(
     chat_msgs: Vec<ChatCompletionRequestMessage>,
-) -> Result<Program> {
+) -> Result<(Program, TokenUsage)> {
     let request = create_chat_request(chat_msgs, None)?;
     let respond = get_chat_response(request).await?;
-
+    
+    let usage = TokenUsage::from_response(&respond);
     let choice = respond.choices.first().unwrap();
     let content = choice.message.content.as_ref().unwrap();
     let content = strip_code_wrapper(&content);
     let program = Program::new(&content);
-    Ok(program)
+    Ok((program, usage))
 }
 
 
