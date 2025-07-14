@@ -189,8 +189,9 @@ mod tests {
 
         // 创建请求
         let request = CreateChatCompletionRequestArgs::default()
-            .model("google/gemini-2.5-flash-preview-05-20")  // 使用Claude 2模型
+            .model("claude_sonnet4")  // 使用Claude 2模型
             .messages(messages)
+            .stream(false)
             .build()?;
         
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -201,9 +202,17 @@ mod tests {
         let response = rt.block_on(client.chat().create(request));
         
         // 处理响应
-        if let Some(choice) = response.unwrap().choices.first() {
-            if let Some(con) = &choice.message.content {
-                println!("Response: {}", con);
+        match response {
+            Ok(response) => {
+                if let Some(choice) = response.choices.first() {
+                    if let Some(con) = &choice.message.content {
+                        println!("Response: {}", con);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("API call failed: {:#?}", e);                // 不要panic，让测试继续
+                return Err(e.into());
             }
         }
         Ok(())
