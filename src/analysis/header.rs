@@ -98,7 +98,7 @@ impl Executor {
             .unwrap();
         let base_name = [".", base_name].concat();
         let output = String::from_utf8_lossy(&output.stderr).to_string();
-        let mut tree = parse_dependency_tree(&output, &base_name)?;
+        let mut tree = parse_dependency_tree(&output, &base_name, &header_path)?;
         tree.get_clean_root(&self.deopt);
         Ok(tree)
     }
@@ -129,7 +129,7 @@ fn get_layer_child(layered_nodes: Vec<(usize, &str)>, depth: usize) -> Vec<TreeN
     childs
 }
 
-fn parse_dependency_tree(output: &str, base_name: &str) -> Result<TreeNode> {
+fn parse_dependency_tree(output: &str, base_name: &str, header_path: &Path) -> Result<TreeNode> {
     let mut node_layer: Vec<(usize, &str)> = Vec::new();
     for line in output.lines() {
         let sep = line
@@ -137,7 +137,7 @@ fn parse_dependency_tree(output: &str, base_name: &str) -> Result<TreeNode> {
             .ok_or_else(|| eyre::eyre!("Expect an spece in line: {line}"))?;
         let layer = sep;
         let header = line[sep..].trim();
-        if header.contains("/usr/lib/") {
+        if !header.starts_with(header_path.to_str().unwrap()) {
             continue;
         }
         if header.ends_with(".h") || header.ends_with(".hpp") || header.ends_with(".hxx") {
