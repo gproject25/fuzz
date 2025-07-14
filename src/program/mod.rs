@@ -34,6 +34,18 @@ pub fn set_exec_counter_value(key: String, value: u32) {
     guard.insert(key, value);
 }
 
+pub fn save_exec_counter(deopt: &Deopt) {
+    let counter_path: PathBuf = [
+        deopt.get_library_misc_dir().unwrap(),
+        "exec_counter.json".into(),
+    ]
+        .iter()
+        .collect();
+    let guard = EXEC_COUNTER.get_or_init(|| RwLock::new(HashMap::new())).read().unwrap();
+    let json = serde_json::to_string(&*guard).unwrap();
+    std::fs::write(counter_path, json).unwrap();
+}
+
 pub fn load_exec_counter(deopt: &Deopt) -> HashMap<String, u32> {
     let counter_path: PathBuf = [
         deopt.get_library_misc_dir().unwrap(),
@@ -161,6 +173,7 @@ impl Program {
                 set_exec_counter_value(call.to_string(), 1);
             }
         }
+        save_exec_counter(deopt);
         // parse critical calls
         let cfg = crate::analysis::cfg::CFGBuilder::build_cfg(ast)?;
         let critical_paths = cfg.visit_max_caller()?;
