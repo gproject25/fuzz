@@ -120,6 +120,11 @@ pub fn get_sample_num() -> u8 {
     config.n_sample
 }
 
+pub fn get_handler_type() -> HandlerType {
+    let config = CONFIG_INSTANCE.get().unwrap().read().unwrap();
+    config.handler_type.clone()
+}
+
 pub fn get_minimize_compile_flag() -> &'static str {
     static MIN_FLAG: OnceCell<String> = OnceCell::new();
     MIN_FLAG.get_or_init(|| {
@@ -147,9 +152,18 @@ pub fn parse_config() -> eyre::Result<()> {
     Ok(())
 }
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 use crate::Deopt;
+
+/// Handler类型选择
+#[derive(Debug, Clone, ValueEnum, PartialEq)]
+pub enum HandlerType {
+    /// 使用OpenAI官方客户端
+    Openai,
+    /// 使用HTTP客户端
+    Http,
+}
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(author="Anonymous", name = "LLMFuzzer", version, about="A LLM based Fuzer", long_about = None)]
@@ -185,6 +199,9 @@ pub struct Config {
     /// Run condensed fuzzers after the fuzz loop
     #[arg(long, default_value = "false")]
     pub fuzzer_run: bool,
+    /// Select the handler type for LLM requests
+    #[arg(long = "handler", default_value = "openai")]
+    pub handler_type: HandlerType,
 }
 
 impl Config {
@@ -201,6 +218,7 @@ impl Config {
             recheck: false,
             fuzzer_run: false,
             disable_power_schedule: false,
+            handler_type: HandlerType::Openai,
         };
         let _ = CONFIG_INSTANCE.set(RwLock::new(config));
         crate::init_debug_logger().unwrap();

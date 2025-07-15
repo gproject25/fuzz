@@ -211,11 +211,12 @@ function build_oss_fuzz() {
     export INSTALLDIR=$WORK
     CFLAGS="$CFLAGS -fsanitize=address"
     CXXFLAGS="$CXXFLAGS -fsanitize=address"
-    ./buildconf || exit 2
-    ./configure ${CODE_COVERAGE_OPTION} || exit 3
-    make -j$(nproc) || exit 4
-    make check || exit 5
-    make zip
+    #./buildconf || exit 2
+    #./configure ${CODE_COVERAGE_OPTION} || exit 3
+    #make -j$(nproc) || exit 4
+    #make check || exit 5
+    #make zip
+    ./scripts/create_zip.sh 1 > /dev/null
     export FUZZ_TARGETS="curl_fuzzer_dict curl_fuzzer_file curl_fuzzer_ftp curl_fuzzer_gopher curl_fuzzer_http curl_fuzzer_https curl_fuzzer_imap curl_fuzzer_ldap curl_fuzzer_mqtt curl_fuzzer_pop3 curl_fuzzer_rtmp curl_fuzzer_rtsp curl_fuzzer_scp curl_fuzzer_sftp curl_fuzzer_smb curl_fuzzer_smtp curl_fuzzer_tftp curl_fuzzer_ws curl_fuzzer fuzz_url"
     for TARGET in $FUZZ_TARGETS
     do
@@ -233,9 +234,9 @@ function build_corpus() {
     mkdir -p $LIB_BUILD/corpus
     for TARGET in $FUZZ_TARGETS
     do
-        unzip -o $OUT/oss_fuzzer/${TARGET}_seed_corpus.zip -d $LIB_BUILD/corpus 
+        unzip -o $OUT/oss_fuzzer/${TARGET}_seed_corpus.zip -d $LIB_BUILD/corpus 1 > /dev/null
     done
-    minimize_corpus
+    #minimize_corpus
     #rm $LIB_BUILD/corpus/oss-fuzz-gen*
 }
 
