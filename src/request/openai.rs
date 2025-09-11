@@ -15,6 +15,7 @@ use eyre::Result;
 use once_cell::sync::OnceCell;
 use futures::future::join_all;
 
+use serde_json::{to_value, Value};
 
 use super::Handler;
 
@@ -145,11 +146,16 @@ fn create_chat_request(
 async fn get_chat_response(
     request: CreateChatCompletionRequest,
 ) -> Result<CreateChatCompletionResponse> {
+    let mut value = to_value(&request)?;
+    if let Value::Object(ref mut map) = value {
+        map.remove("web_search_options");
+    }
+    let clean_req = value;
     let client = get_client().unwrap();
     for _retry in 0..config::RETRY_N {
         let response = client
             .chat()
-            .create(request.clone())
+            .create_byot(clean_req.clone())
             .await
             .map_err(eyre::Report::new);
         match is_critical_err(&response) {
