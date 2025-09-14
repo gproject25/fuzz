@@ -22,6 +22,9 @@ pub struct FuncGadget {
     alias_arg_types: Vec<String>,
     ret_type: String,
     alias_ret_type: String,
+    arg_ownersip_info: Vec<String>,
+    ret_ownership_info: String,
+    func_info: String,
 }
 
 pub fn get_func_gadgets() -> &'static Vec<FuncGadget> {
@@ -516,6 +519,9 @@ impl FuncGadget {
         alias_arg_types: Vec<String>,
         ret_type: String,
         alias_ret_type: String,
+        arg_ownership_info: Vec<String>,
+        ret_ownership_info: String,
+        func_info: String,
     ) -> Self {
         Self {
             name,
@@ -524,6 +530,9 @@ impl FuncGadget {
             alias_arg_types,
             ret_type,
             alias_ret_type,
+            arg_ownership_info,
+            ret_ownership_info,
+            func_info,
         }
     }
 
