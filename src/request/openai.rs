@@ -15,7 +15,7 @@ use eyre::Result;
 use once_cell::sync::OnceCell;
 use futures::future::join_all;
 
-use serde_json::{to_value, Value};
+use serde_json::{json, to_value, Value};
 
 use super::Handler;
 
@@ -100,6 +100,10 @@ impl Handler for OpenAIHanler {
         
         Ok(programs)
     }
+
+    fn generat_json(&self, prompt: String) -> eyre::Result<serd_json::Value> {
+
+    }
 }
 
 /// Get the OpenAI interface client.
@@ -140,6 +144,68 @@ fn create_chat_request(
     }
     let request = request.build()?;
     Ok(request)
+}
+
+fn create_structured_request(
+    msg: String,
+    stop: Option<String>,
+) -> Result<CreateChatCompletionRequest> {
+    let mut binding = CreateChatCompletionRequestArgs::default();
+    let binding = binding.model(config::get_openai_model_name());
+
+    let scheme = json!({
+      "type": "object",
+      "properties": {
+        "APIs": {
+          "type": "array",
+          "description": "api of the library",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Function name of the API"
+              },
+              "arg_ownership_info": {
+                "type": "array",
+                "description": "Information about responsibility of freeing, if caller keeps ownership or not.",
+                "items": {
+                  "enum": [
+                    "Caller keeps ownership",
+                    "Caller loses ownership",
+                    "None"
+                  ],
+                  "type": "string"
+                }
+              },
+              "ret_ownership_info": {
+                "enum": [
+                  "Caller owns",
+                  "Library owns",
+                  "None"
+                ],
+                "type": "string",
+                "description": "Information about responsibility of freeing, if caller has ownership or not."
+              },
+              "func_info": {
+                "type": "string",
+                "description": "Other useful information for fuzzing harness generation (ex: must-follow how-to-use, other function which should be called before this function, etc)"
+              }
+            },
+            "required": [
+              "name",
+              "arg_ownership_info"
+            ]
+          }
+        },
+        "library_boilerplate": {
+          "type": "string",
+          "description": "Must-follow boilerplate, library-specific error handeling, and other informations needed for making fuzzing harness."
+        }
+      },
+      "required": []
+    }); // TODO more soft-coded
+    // TODO add files - docs file, header files?
 }
 
 /// Get a response for a chat request

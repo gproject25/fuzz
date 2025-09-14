@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use crate::{
     config::{self, get_config, get_library_name, get_handler_type, HandlerType},
     deopt::Deopt,
@@ -56,6 +57,13 @@ impl Fuzzer {
             quiet_round: 0,
         };
         Ok(fuzzer)
+    }
+
+    fn doc_to_explain(&mut self) -> Result<()> {
+        let path = self.deopt.get_library_api_explain_dump_path();
+        let request = ""; // todo
+
+        Ok(())
     }
 
     fn sync_quiet_round(&mut self, content: &str) -> Result<()> {
