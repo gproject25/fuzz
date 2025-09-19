@@ -8,7 +8,7 @@ use crate::{
 };
 use async_openai::{
     config::OpenAIConfig, types::{
-        ChatCompletionRequestMessage, CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse
+        ChatCompletionRequestMessage, CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse, ResponseFormatJsonSchema
     }, Client
 };
 use eyre::Result;
@@ -149,6 +149,7 @@ fn create_chat_request(
 fn create_structured_request(
     msg: String,
     stop: Option<String>,
+    files: Option<Vec<String>>,
 ) -> Result<CreateChatCompletionRequest> {
     let mut binding = CreateChatCompletionRequestArgs::default();
     let binding = binding.model(config::get_openai_model_name());
@@ -205,7 +206,30 @@ fn create_structured_request(
       },
       "required": []
     }); // TODO more soft-coded
-    // TODO add files - docs file, header files?
+    let mut full_msg = msg
+    if let some(paths) = files {
+        for path in paths {
+            let text = std::fs::read_to_string(path)?;
+            full_msg.push_str(&format!("\n--- File Content ({}) ---", path));
+            full_msg.push_str(&text);
+        }
+    }
+    let mut request = binding
+        .messages(vec![ChatCompletionRequestMessage::User(full_msg)])
+        .temperature(config::get_config().temperature)
+        .response_format(ResponseFormat::JsonSchema {
+            json_schema: ResponseFormatJsonSchema {
+                schema: Some(schema),
+                description: None,
+                name: "fuzzing_harness_gen".into(),
+                strict: Some(true),
+            }
+        });
+    if let Some(stop) = stop {
+        request = request.stop(stop);
+    }
+    let request = request.build()?;
+    Ok(request)
 }
 
 /// Get a response for a chat request
