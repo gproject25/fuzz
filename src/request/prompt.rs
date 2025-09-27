@@ -98,7 +98,7 @@ impl Prompt {
     /// format to chat kind prompt.
     pub fn to_chatgpt_message(&self) -> Vec<ChatCompletionRequestMessage> {
         let ctx = get_combination_definitions(&self.gadgets);
-        let sys_msg = get_sys_gen_message(ctx);
+        let sys_msg = get_sys_gen_message(ctx, Some(&self.gadgets));
         log::trace!("System role: {sys_msg}");
         let user_msg = config::get_user_chat_template()
             .replace("{combinations}", &combination_to_str(&self.gadgets));
@@ -116,7 +116,7 @@ impl Prompt {
 }
 
 /// get the message of the system role for generative tasks.
-pub fn get_sys_gen_message(ctx: String) -> String {
+pub fn get_sys_gen_message(ctx: String, selected_gadgets: Option<&Vec<&FuncGadget>>) -> String {
     let deopt = Deopt::new(get_library_name()).unwrap();
     let mut template = config::SYSTEM_GEN_TEMPLATE.to_string();
     let mut ctx_template = config::SYSTEM_CONTEXT_TEMPLATE.replace("{project}", &get_library_name());
@@ -160,11 +160,19 @@ fn get_combination_definitions(combination: &Vec<&FuncGadget>) -> String {
 }
 
 pub fn combination_to_str(combination: &Vec<&FuncGadget>) -> String {
-    let mut signatures = Vec::new();
-    for func in combination {
-        signatures.push(func.gen_signature());
-    }
-    signatures.join(",\n    ")
+    combination
+        .iter()
+        .map(|g| {
+            format!(
+                "{}\n  - Arg ownership: {:?}\n  - Ret ownership: {}\n  - Notes: {}",
+                g.gen_signature(),
+                g.arg_ownership_info(),
+                g.ret_ownership_info(),
+                g.func_info()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 pub fn save_prompt(combination: &[&FuncGadget]) {

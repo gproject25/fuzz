@@ -1,14 +1,15 @@
 use std::{process::Child, time::Duration};
-
 use crate::{
     config::{self, get_config, get_openai_proxy},
     is_critical_err,
     program::Program,
     FuzzerError,
+    deopt::Deopt, 
+    analysis::header as headers,
 };
 use async_openai::{
     config::OpenAIConfig, types::{
-        ChatCompletionRequestMessage, CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse, ResponseFormatJsonSchema
+        ChatCompletionRequestMessage, CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse,  ResponseFormatJsonSchema,ResponseFormat, ChatCompletionRequestUserMessageArgs,
     }, Client
 };
 use eyre::Result;
@@ -75,6 +76,15 @@ impl Handler for OpenAIHanler {
     fn generate(&self, prompt: &super::prompt::Prompt) -> eyre::Result<Vec<Program>> {
         let start = std::time::Instant::now();
         let chat_msgs = prompt.to_chatgpt_message();
+        
+        
+       /* println!("===== LLM Prompt Start =====");
+	for (i, msg) in chat_msgs.iter().enumerate() {
+	    // Use Debug print for entire message struct
+	    println!("Message {}:\n{}", i, serde_json::to_string_pretty(&msg)?);
+	}
+	println!("===== LLM Prompt End =====");*/
+	
         let mut futures = Vec::new();
         for _ in 0..get_config().n_sample {
             let future = generate_program_by_chat(chat_msgs.clone());
@@ -100,9 +110,30 @@ impl Handler for OpenAIHanler {
         
         Ok(programs)
     }
-
-    fn generat_json(&self, prompt: String) -> eyre::Result<serd_json::Value> {
-
+    
+    fn generate_json(&self, prompt: String, deopt: &Deopt) -> eyre::Result<serde_json::Value> {
+        let mut files = headers::get_include_sys_headers(deopt).clone();
+        files.extend(headers::get_include_lib_headers(deopt)?);
+        
+        let mut allfiles = Vec::new();
+    	for header in &files {
+        	let path = headers::resolve_lib_header(deopt, header)?;
+        	allfiles.push(path.to_string_lossy().to_string());
+    	}
+    	
+    	//add document
+    	let docs_path = deopt.get_library_build_dir()?;
+    	for candidate in &["README.md", "README.txt", "README"] {
+    		let path = docs_path.join(candidate);
+    		if path.exists() {
+        		allfiles.push(path.to_string_lossy().to_string());
+        	}
+    	}	
+        
+        self.rt.block_on(async {
+        	let (json, _usage) = generate_json_by_chat(prompt,Some(allfiles)).await?;
+        	Ok(json)
+    	})
     }
 }
 
@@ -154,98 +185,112 @@ fn create_structured_request(
     let mut binding = CreateChatCompletionRequestArgs::default();
     let binding = binding.model(config::get_openai_model_name());
 
-    let scheme = json!({
-      "type": "object",
-      "properties": {
-        "APIs": {
-          "type": "array",
-          "description": "api of the library",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Function name of the API"
-              },
-              "arg_ownership_info": {
-                "type": "array",
-                "description": "Information about responsibility of freeing, if caller keeps ownership or not.",
-                "items": {
-                  "enum": [
-                    "Caller keeps ownership",
-                    "Caller loses ownership",
-                    "None"
-                  ],
-                  "type": "string"
-                }
-              },
-              "ret_ownership_info": {
-                "enum": [
-                  "Caller owns",
-                  "Library owns",
-                  "None"
-                ],
-                "type": "string",
-                "description": "Information about responsibility of freeing, if caller has ownership or not."
-              },
-              "func_info": {
-                "type": "string",
-                "description": "Other useful information for fuzzing harness generation (ex: must-follow how-to-use, other function which should be called before this function, etc)"
-              }
-            },
-            "required": [
-              "name",
-              "arg_ownership_info"
-            ]
-          }
-        },
-        "library_boilerplate": {
-          "type": "string",
-          "description": "Must-follow boilerplate, library-specific error handeling, and other informations needed for making fuzzing harness."
-        }
-      },
-      "required": []
-    }); // TODO more soft-coded
-    let mut full_msg = msg
-    if let some(paths) = files {
-        for path in paths {
-            let text = std::fs::read_to_string(path)?;
-            full_msg.push_str(&format!("\n--- File Content ({}) ---", path));
-            full_msg.push_str(&text);
-        }
+    let schema = json!({
+	    "type": "object",
+	    "properties": {
+		"APIs": {
+		    "type": "array",
+		    "description": "api of the library",
+		    "items": {
+		        "type": "object",
+		        "properties": {
+		            "name": { "type": "string", "description": "Function name of the API" },
+		            "arg_ownership_info": { 
+		                "type": "array",
+		                "description": "Information about responsibility of freeing, if caller keeps ownership or not.",
+		                "items": { 
+		                    "enum": ["Caller keeps ownership", "Caller loses ownership", "None"], 
+		                    "type": "string" 
+		                }
+		            },
+		            "ret_ownership_info": { 
+		                "enum": ["Caller owns", "Library owns", "None"], 
+		                "type": "string", 
+		                "description": "Information about responsibility of freeing, if caller has ownership or not." 
+		            },
+		            "func_info": { "type": "string", "description": "Other useful information for fuzzing harness generation (ex: must-follow how-to-use, other function which should be called before this function, etc)" }
+		        },
+		        "required": ["name", "arg_ownership_info","ret_ownership_info", "func_info"],
+		        "additionalProperties": false
+		    }
+		},
+		"library_boilerplate": {
+		    "type": "string",
+		    "description": "Must-follow boilerplate, library-specific error handeling, and other informations needed for making fuzzing harness."
+		}
+	    },
+	    "required": ["APIs", "library_boilerplate"],
+	    "additionalProperties": false
+    });
+    
+    let mut full_msg = msg;
+    if let Some(paths) = files {
+        let mut header_files = Vec::new();
+        let mut doc_files = Vec::new();
+        
+        for path in &paths {
+        	if path.to_lowercase().contains("readme") {
+            		doc_files.push(path);
+        	} else {
+            		header_files.push(path);
+        	}
+    	}
+	for path in &header_files {
+	    match std::fs::read_to_string(path) {
+		Ok(text) => {
+		    full_msg.push_str(&format!("\n--- Header File ---\n"));
+		    full_msg.push_str(&text);
+		}
+		Err(e) => log::warn!("Could not read {}: {}", path, e),
+	    }
+	}
+
+	for path in &doc_files {
+	    match std::fs::read_to_string(path) {
+		Ok(text) => {
+		    full_msg.push_str(&format!("\n--- Documentation File  ---\n"));
+		    full_msg.push_str(&text);
+		}
+		Err(e) => log::warn!("Could not read {}: {}", path, e),
+	    }
+	}
     }
+    
+    let user_msg = ChatCompletionRequestUserMessageArgs::default()
+        .content(full_msg)
+        .build()?
+        .into();
+    
     let mut request = binding
-        .messages(vec![ChatCompletionRequestMessage::User(full_msg)])
+        .messages(vec![user_msg])
         .temperature(config::get_config().temperature)
         .response_format(ResponseFormat::JsonSchema {
             json_schema: ResponseFormatJsonSchema {
                 schema: Some(schema),
-                description: None,
+                description: Some("Extract structured API info for fuzzing harness".into()),
                 name: "fuzzing_harness_gen".into(),
                 strict: Some(true),
             }
         });
+    
     if let Some(stop) = stop {
         request = request.stop(stop);
     }
     let request = request.build()?;
+
     Ok(request)
 }
+
 
 /// Get a response for a chat request
 async fn get_chat_response(
     request: CreateChatCompletionRequest,
 ) -> Result<CreateChatCompletionResponse> {
-    let mut value = to_value(&request)?;
-    if let Value::Object(ref mut map) = value {
-        map.remove("web_search_options");
-    }
-    let clean_req = value;
     let client = get_client().unwrap();
     for _retry in 0..config::RETRY_N {
         let response = client
             .chat()
-            .create_byot(clean_req.clone())
+            .create(request.clone())
             .await
             .map_err(eyre::Report::new);
         match is_critical_err(&response) {
@@ -262,9 +307,25 @@ async fn get_chat_response(
     Err(FuzzerError::RetryError(format!("{request:?}"), config::RETRY_N).into())
 }
 
+pub async fn generate_json_by_chat(
+    prompt: String,
+    files: Option<Vec<String>>,
+) -> Result<(serde_json::Value, TokenUsage)> {
+    
+    let request = create_structured_request(prompt, None, files)?;
+    let respond = get_chat_response(request).await?;
+    
+    let usage = TokenUsage::from_response(&respond);
+    let choice = respond.choices.first().unwrap();
+    let content = choice.message.content.as_ref().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(content)?;
+    Ok((parsed, usage))
+}
+
 pub async fn generate_program_by_chat(
     chat_msgs: Vec<ChatCompletionRequestMessage>,
 ) -> Result<(Program, TokenUsage)> {
+
     let request = create_chat_request(chat_msgs, None)?;
     let respond = get_chat_response(request).await?;
     
@@ -312,54 +373,25 @@ fn strip_code_wrapper(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use async_openai::types::{ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs};
-
     use super::*;
+    use async_openai::types::{ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs};
+    use eyre::Result;
 
-    #[test]
-    fn test_get_client() -> Result<()> {
-        dotenv::dotenv().ok();
+    #[tokio::test]  // async test
+    async fn test_generate_json() -> Result<()> {
+        dotenv::dotenv().ok(); // make sure OPENAI_API_KEY is loaded
         config::init_openai_env();
-        
-        let client = get_client().unwrap();
-        
-        let messages: Vec<ChatCompletionRequestMessage> = vec![
-            ChatCompletionRequestSystemMessageArgs::default()
-            .content("You are a helpful assistant.")
-            .build()?.into(),
-            ChatCompletionRequestUserMessageArgs::default()
-            .content("Explain Rust's ownership system in simple terms.")
-            .build()?.into()
-        ];
+        println!("API_KEY: {:?}", std::env::var("OPENAI_API_KEY"));
+	println!("MODEL: {:?}", std::env::var("OPENAI_MODEL_NAME"));
 
-        // 创建请求
-        let request = CreateChatCompletionRequestArgs::default()
-            .model("claude_sonnet4")  // 使用Claude 2模型
-            .messages(messages)
-            .stream(false)
-            .build()?;
-        
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap_or_else(|_| panic!("Unable to build the openai runtime."));
-        // 发送请求
-        let response = rt.block_on(client.chat().create(request));
-        
-        // 处理响应
-        match response {
-            Ok(response) => {
-                if let Some(choice) = response.choices.first() {
-                    if let Some(con) = &choice.message.content {
-                        println!("Response: {}", con);
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("API call failed: {:#?}", e);                // 不要panic，让测试继续
-                return Err(e.into());
-            }
-        }
+        let prompt = "Explain Rust's ownership system in JSON format.".to_string();
+
+        // call your function
+        let (json, usage) = generate_json_by_chat(prompt, None).await?;
+
+        println!("JSON response:\n{}", serde_json::to_string_pretty(&json)?);
+        println!("Token usage: {:?}", usage);
+
         Ok(())
     }
 }
