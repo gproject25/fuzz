@@ -14,6 +14,8 @@ use std::{
     process::{Command, Stdio},
 };
 
+use std::path::PathBuf;
+
 use super::WorkList;
 
 #[derive(Debug)]
@@ -366,6 +368,7 @@ pub fn get_include_sys_headers(deopt: &Deopt) -> &'static Vec<String> {
             .iter()
             .map(|x| x.to_string())
             .collect();
+
         let mut sys_headers = Vec::new();
         for tree in header_trees {
             let name = tree.get_name();
@@ -390,6 +393,12 @@ pub fn get_include_sys_headers_str() -> String {
     let deopt = Deopt::new(get_library_name()).unwrap();
     let headers = get_include_sys_headers(&deopt);
     headers.join("\n")
+}
+
+pub fn resolve_lib_header(deopt: &Deopt, header: &str) -> Result<PathBuf> {
+    let include_dir = deopt.get_library_build_header_path()?;
+    let candidate = include_dir.join(header);
+    Ok(candidate)
 }
 
 #[test]

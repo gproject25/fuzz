@@ -9,6 +9,7 @@ use async_openai::types::ChatCompletionRequestMessage;
 use futures::future::join_all;
 
 use crate::program::Program;
+use crate::deopt::Deopt;
 
 /// Token使用统计结构
 #[derive(Debug, Clone, Default)]
@@ -662,7 +663,12 @@ impl super::Handler for HttpHandler {
         
         Ok(programs)
     }
+    fn generate_json(&self, _prompt: String, _deopt: &Deopt) -> eyre::Result<serde_json::Value> {
+        Ok(serde_json::json!({ "error": "HttpHandler does not implement generate_json" }))
+    }
+        
 }
+
 
 #[cfg(test)]
 mod tests {

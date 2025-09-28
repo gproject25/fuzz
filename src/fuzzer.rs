@@ -11,12 +11,13 @@ use crate::{
         schedule::{rand_choose_combination, Schedule},
     },
     minimize::minimize,
-    program::{libfuzzer::LibFuzzer, rand::rand_comb_len, serde::Deserializer, Program},
+    program::{libfuzzer::LibFuzzer, rand::rand_comb_len, serde::Deserializer, gadget::init_func_gadgets, Program},
     request::{
         self,
         prompt::{load_prompt, Prompt},
     },
 };
+
 use eyre::Result;
 
 pub struct Fuzzer {
@@ -28,6 +29,7 @@ pub struct Fuzzer {
     handler: Box<dyn request::Handler>,
     pub quiet_round: usize,
 }
+
 
 impl Fuzzer {
     /// create a new fuzzer
@@ -58,13 +60,25 @@ impl Fuzzer {
         };
         Ok(fuzzer)
     }
+    
+    fn doc_to_explain(&mut self) -> Result<serde_json::Value> {
+	    // Build a prompt string describing what you want
+	    let library_name = crate::config::get_library_name();
+	    let prompt = format!(
+		"Read the following documentation of {} library carefully and explain the APIs and usage of the library {} in following JSON format. If any API’s ownership information is missing, infer it conservatively based on typical C/C++ conventions (e.g., const pointer arguments usually mean caller keeps ownership, functions returning a pointer usually mean caller owns the result unless documented otherwise). Try not to use ‘None’ — provide a best-guess ownership for each argument and return value.
+	- All const pointer arguments mean caller keeps ownership.
+	- Functions returning a pointer usually return ownership to caller, unless otherwise documented.
+	- Functions that free memory do not transfer ownership.
+		
+		",
+		library_name,library_name
+	    );
 
-    fn doc_to_explain(&mut self) -> Result<()> {
-        let path = self.deopt.get_library_api_explain_dump_path();
-        let request = ""; // todo
-
-        Ok(())
+	    // Call your OpenAI handler to get structured JSON
+	    let json = self.handler.generate_json(prompt, &self.deopt)?;
+	    Ok(json)
     }
+
 
     fn sync_quiet_round(&mut self, content: &str) -> Result<()> {
         if let Some(idx) = content.find("[Mutate Loop]: loop:") {
@@ -209,7 +223,13 @@ impl Fuzzer {
 
     pub fn fuzz_loop(&mut self) -> Result<()> {
         let mut logger = ProgramLogger::default();
+        
+        let lib_json = self.doc_to_explain()?;
+        println!("lib_json pretty:\n{}", serde_json::to_string_pretty(&lib_json)?);
+        init_func_gadgets(Some(lib_json));
+        //init_func_gadgets(None);
         let initial_combination = rand_choose_combination(rand_comb_len());
+        
         let mut prompt = if let Some(prompt) = load_prompt(&self.deopt) {
             prompt
         } else {
@@ -283,3 +303,27 @@ impl Drop for Fuzzer {
         log::info!("Config: {:#?}", get_config());
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eyre::Result;
+    use crate::config::Config;
+    use dotenv::dotenv;
+    
+    #[test] // async test runtime
+    fn test_doc_to_explain() -> eyre::Result<()> {
+    	    dotenv().ok();
+            config::init_openai_env();
+	    crate::config::Config::init_test("cJSON");
+	 
+	    let mut fuzzer = Fuzzer::new()?;
+	    let json = fuzzer.doc_to_explain()?; // no `.await`
+
+	    println!("{}", serde_json::to_string_pretty(&json)?);
+	    Ok(())
+    }
+}
+
+

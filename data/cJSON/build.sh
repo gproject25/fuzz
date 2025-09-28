@@ -38,6 +38,11 @@ function build_oss_fuzz() {
 function copy_include() {
     mkdir -p ${LIB_BUILD}/include
     cp ${SRC}/${PROJECT_NAME}/cJSON.h ${LIB_BUILD}/include/cJSON.h
+    
+    # copy README
+    if [ -f "${SRC}/${PROJECT_NAME}/README.md" ]; then
+        cp "${SRC}/${PROJECT_NAME}/README.md" "${LIB_BUILD}/README.md"
+    fi
 }
 
 function build_corpus() {

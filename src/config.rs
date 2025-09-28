@@ -206,11 +206,12 @@ pub struct Config {
 
 impl Config {
     pub fn init_test(target: &str) {
+        let available_cores = num_cpus::get();
         let config = Config {
             target: target.to_string(),
             n_sample: 10,
             temperature: 0.6,
-            cores: 10,
+            cores: available_cores,
             max_cores: 0,
             fuzz_round_succ: 1,
             fuzz_converge_round: 10,

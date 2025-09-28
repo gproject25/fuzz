@@ -11,6 +11,7 @@ use eyre::{Context, Result};
 use once_cell::sync::OnceCell;
 use regex::Regex;
 use std::collections::HashMap;
+use serde_json::Value;
 
 use super::{rand::random_sample, Deserialize, Deserializer};
 
@@ -22,19 +23,54 @@ pub struct FuncGadget {
     alias_arg_types: Vec<String>,
     ret_type: String,
     alias_ret_type: String,
-    arg_ownersip_info: Vec<String>,
+    arg_ownership_info: Vec<String>,
     ret_ownership_info: String,
     func_info: String,
 }
 
-pub fn get_func_gadgets() -> &'static Vec<FuncGadget> {
-    static GADGETS: OnceCell<Vec<FuncGadget>> = OnceCell::new();
-    GADGETS.get_or_init(|| {
+pub fn merge_llm_schema_from_json(gadgets: &mut Vec<FuncGadget>, json: &Vec<FuncGadget>) {
+    for g in gadgets.iter_mut() {
+        if let Some(schema_g) = json.iter().find(|j| j.name == g.name) {
+            g.arg_ownership_info = schema_g.arg_ownership_info.clone();
+            g.ret_ownership_info = schema_g.ret_ownership_info.clone();
+            g.func_info = schema_g.func_info.clone();
+        }
+    }
+}
+
+
+static GADGETS: OnceCell<Vec<FuncGadget>> = OnceCell::new();
+
+pub fn init_func_gadgets(lib_json: Option<Value>) -> &'static Vec<FuncGadget> {
+    GADGETS.get_or_init(move || {
         let deopt = Deopt::new(config::get_library_name()).unwrap();
         if let Ok(gadgets) = load_func_gadgets(&deopt) {
             return gadgets;
         }
         let mut gadgets = parse_func_gadgets(&deopt).unwrap();
+
+	if let Some(arr) = lib_json
+	    .as_ref()
+	    .and_then(|v| v.get("APIs"))
+	    .and_then(|v| v.as_array())
+	{
+	    for g in gadgets.iter_mut() {
+		if let Some(schema_g) = arr.iter().find(|j| j["name"].as_str() == Some(&g.name)) {
+		    g.arg_ownership_info = serde_json::from_value(schema_g["arg_ownership_info"].clone())
+		        .expect("Invalid arg_ownership_info format");
+
+		    g.ret_ownership_info = schema_g["ret_ownership_info"]
+		        .as_str()
+		        .expect("ret_ownership_info should be a string")
+		        .to_string();
+
+		    g.func_info = schema_g["func_info"]
+		        .as_str()
+		        .expect("func_info should be a string")
+		        .to_string();
+		}
+	    }
+	}
         if let Some(ban_funcs) = &deopt.config.ban {
             gadgets.retain(|x| {
                 for ban_func in ban_funcs {
@@ -54,6 +90,10 @@ pub fn get_func_gadgets() -> &'static Vec<FuncGadget> {
         }
         gadgets
     })
+}
+
+pub fn get_func_gadgets() -> &'static Vec<FuncGadget> {
+    GADGETS.get().expect("Func gadgets not initialized yet")
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, serde::Deserialize, serde::Serialize)]
@@ -414,8 +454,10 @@ pub mod func_gadget {
                     alias_types.push(alias_type);
                     types.push(ty);
                 }
+                
+                //modify
                 let gadget =
-                    FuncGadget::new(name, idents, types, alias_types, ret_type, alias_ret_type);
+                    FuncGadget::new(name, idents, types, alias_types, ret_type, alias_ret_type, Vec::new(),String::new(), String::new());
                 gadgets.push(gadget);
             }
         }
@@ -464,6 +506,7 @@ impl Deserialize for FuncGadget {
                 de.eat_token(",")?;
             }
         }
+        
         // parse arg types
         de.consume_token_until("arg_types: [")?;
         let mut arg_types = vec![];
@@ -500,6 +543,24 @@ impl Deserialize for FuncGadget {
         } else {
             "void"
         };
+        
+        de.consume_token_until("arg_ownership_info: [")?;
+	let mut arg_ownership_info = vec![];
+	while de.peek_char()? == '\"' {
+	    let info = de.parse_string()?;
+	    arg_ownership_info.push(info.to_owned());
+	    if de.peek_char()? == ',' {
+		de.eat_token(",")?;
+	    }
+	}
+        
+        de.consume_token_until("ret_ownership_info: ")?;
+	    let ret_ownership_info = de.parse_string()?;
+	   
+	de.consume_token_until("func_info: ")?;
+	    let func_info = de.parse_string()?;
+        
+        
         Ok(Self {
             name: name.to_owned(),
             arg_idents,
@@ -507,6 +568,10 @@ impl Deserialize for FuncGadget {
             alias_arg_types,
             ret_type: ret_type.to_owned(),
             alias_ret_type: alias_ret_type.to_owned(),
+            //modify later
+	    arg_ownership_info,
+	    ret_ownership_info: ret_ownership_info.to_owned(),
+	    func_info: func_info.to_owned(),
         })
     }
 }
@@ -539,6 +604,18 @@ impl FuncGadget {
     pub fn get_func_name(&self) -> &str {
         &self.name
     }
+    pub fn arg_ownership_info(&self) -> &Vec<String> {
+        &self.arg_ownership_info
+    }
+
+    pub fn ret_ownership_info(&self) -> &str {
+        &self.ret_ownership_info
+    }
+
+    pub fn func_info(&self) -> &str {
+        &self.func_info
+    }
+    
 
     pub fn gen_raw_type_signature(&self) -> String {
         let ret_type = &self.ret_type;
@@ -1003,6 +1080,7 @@ pub fn get_func_gadget(func: &str) -> Option<&'static FuncGadget> {
     get_func_gadgets().iter().find(|x| x.name == func)
 }
 
+
 pub fn dump_func_gadgets_tostr() -> String {
     let gadgets = get_func_gadgets();
     let gadgets = random_sample(gadgets, crate::config::MAX_CONTEXT_APIS);
@@ -1012,6 +1090,7 @@ pub fn dump_func_gadgets_tostr() -> String {
     }
     dump_str.join("\n")
 }
+
 
 /// Get the functions with their fuzzable parameters.
 /// Returned with the map of Function names and vectors of fuzzable parameters' positions.

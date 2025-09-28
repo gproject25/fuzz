@@ -215,10 +215,10 @@ impl Deopt {
     }
 
     pub fn get_library_api_explain_dump_path(&self) -> Result<PathBuf> {
-        let save_path: PathBuf = [self.get_library_misc_dir()?, "api_expalin.json".into()]
+        let save_path: PathBuf = [self.get_library_misc_dir()?, "api_explain.json".into()]
             .iter()
             .collect();
-        OK(save_path)
+        Ok(save_path)
     }
 
     /// get the output directory of the library under test.
