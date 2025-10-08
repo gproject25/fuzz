@@ -272,7 +272,7 @@ impl LibConfig {
 
 /// Template of generative prompt in system role.
 pub const SYSTEM_GEN_TEMPLATE: &str = "Act as a C++ langauge Developer, write a fuzz driver that follow user's instructions.
-The prototype of fuzz dirver is: `extern \"C\" int LLVMFuzzerTestOneInput(const uint8_t data, size_t size)`.
+The prototype of fuzz driver is: `extern \"C\" int LLVMFuzzerTestOneInput(const uint8_t data, size_t size)`.
 \n";
 
 /// Template of providing the context of library's structures.

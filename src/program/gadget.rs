@@ -28,49 +28,62 @@ pub struct FuncGadget {
     func_info: String,
 }
 
-pub fn merge_llm_schema_from_json(gadgets: &mut Vec<FuncGadget>, json: &Vec<FuncGadget>) {
-    for g in gadgets.iter_mut() {
-        if let Some(schema_g) = json.iter().find(|j| j.name == g.name) {
-            g.arg_ownership_info = schema_g.arg_ownership_info.clone();
-            g.ret_ownership_info = schema_g.ret_ownership_info.clone();
-            g.func_info = schema_g.func_info.clone();
-        }
+fn load_api_explain_json(deopt: &Deopt) -> Result<Option<Value>> {
+    let path = deopt.get_library_api_explain_dump_path()?;
+    if !path.exists() {
+        return Ok(None);
     }
+    let s = std::fs::read_to_string(&path)
+        .map_err(|e| eyre::eyre!("Failed to read {}: {}", path.display(), e))?;
+    let v: Value = serde_json::from_str(&s)
+        .map_err(|e| eyre::eyre!("Invalid JSON in {}: {}", path.display(), e))?;
+    Ok(Some(v))
 }
 
 
-static GADGETS: OnceCell<Vec<FuncGadget>> = OnceCell::new();
-
-pub fn init_func_gadgets(lib_json: Option<Value>) -> &'static Vec<FuncGadget> {
-    GADGETS.get_or_init(move || {
+pub fn get_func_gadgets() -> &'static Vec<FuncGadget> {
+    static GADGETS: OnceCell<Vec<FuncGadget>> = OnceCell::new();
+    GADGETS.get_or_init(|| {
         let deopt = Deopt::new(config::get_library_name()).unwrap();
         if let Ok(gadgets) = load_func_gadgets(&deopt) {
             return gadgets;
         }
         let mut gadgets = parse_func_gadgets(&deopt).unwrap();
+        
+        if let Ok(Some(api_json)) = load_api_explain_json(&deopt) {
+		if let Some(arr) = api_json.get("APIs").and_then(|v| v.as_array()) {
+		    for g in gadgets.iter_mut() {
+		        if let Some(schema_g) = arr.iter().find(|j| {
+		            j.get("name")
+		             .and_then(|n| n.as_str())
+		             .map(|s| s == g.name)
+		             .unwrap_or(false)
+		        }) {
+		            if let Some(a) = schema_g.get("arg_ownership_info") {
+		                match serde_json::from_value::<Vec<String>>(a.clone()) {
+		                    Ok(vecs) => g.arg_ownership_info = vecs,
+		                    Err(_) => {
+		                        log::warn!("Invalid arg_ownership_info for {} — skipping", g.name);
+		                    }
+		                }
+		            }
 
-	if let Some(arr) = lib_json
-	    .as_ref()
-	    .and_then(|v| v.get("APIs"))
-	    .and_then(|v| v.as_array())
-	{
-	    for g in gadgets.iter_mut() {
-		if let Some(schema_g) = arr.iter().find(|j| j["name"].as_str() == Some(&g.name)) {
-		    g.arg_ownership_info = serde_json::from_value(schema_g["arg_ownership_info"].clone())
-		        .expect("Invalid arg_ownership_info format");
+		            if let Some(r) = schema_g.get("ret_ownership_info").and_then(|v| v.as_str()) {
+		                g.ret_ownership_info = r.to_string();
+		            }
 
-		    g.ret_ownership_info = schema_g["ret_ownership_info"]
-		        .as_str()
-		        .expect("ret_ownership_info should be a string")
-		        .to_string();
+		            if let Some(f) = schema_g.get("func_info").and_then(|v| v.as_str()) {
+		                g.func_info = f.to_string();
+		            }
 
-		    g.func_info = schema_g["func_info"]
-		        .as_str()
-		        .expect("func_info should be a string")
-		        .to_string();
+		        }
+		    }
 		}
-	    }
-	}
+		else {
+		    log::warn!("api_explain.json missing");
+		}
+    	}
+        
         if let Some(ban_funcs) = &deopt.config.ban {
             gadgets.retain(|x| {
                 for ban_func in ban_funcs {
@@ -90,10 +103,6 @@ pub fn init_func_gadgets(lib_json: Option<Value>) -> &'static Vec<FuncGadget> {
         }
         gadgets
     })
-}
-
-pub fn get_func_gadgets() -> &'static Vec<FuncGadget> {
-    GADGETS.get().expect("Func gadgets not initialized yet")
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, serde::Deserialize, serde::Serialize)]

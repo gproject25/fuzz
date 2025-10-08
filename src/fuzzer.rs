@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+use std::cell::RefCell;
+
 use crate::{
     config::{self, get_config, get_library_name, get_handler_type, HandlerType},
     deopt::Deopt,
@@ -11,7 +13,7 @@ use crate::{
         schedule::{rand_choose_combination, Schedule},
     },
     minimize::minimize,
-    program::{libfuzzer::LibFuzzer, rand::rand_comb_len, serde::Deserializer, gadget::init_func_gadgets, Program},
+    program::{libfuzzer::LibFuzzer, rand::rand_comb_len, serde::Deserializer, Program},
     request::{
         self,
         prompt::{load_prompt, Prompt},
@@ -76,6 +78,10 @@ impl Fuzzer {
 
 	    // Call your OpenAI handler to get structured JSON
 	    let json = self.handler.generate_json(prompt, &self.deopt)?;
+	    
+	    let path = self.deopt.get_library_api_explain_dump_path()?;
+	    std::fs::write(&path, serde_json::to_string_pretty(&json)?)?;
+		    
 	    Ok(json)
     }
 
@@ -223,13 +229,9 @@ impl Fuzzer {
 
     pub fn fuzz_loop(&mut self) -> Result<()> {
         let mut logger = ProgramLogger::default();
+        let lib_json = self.doc_to_explain().ok();
         
-        let lib_json = self.doc_to_explain()?;
-        println!("lib_json pretty:\n{}", serde_json::to_string_pretty(&lib_json)?);
-        init_func_gadgets(Some(lib_json));
-        //init_func_gadgets(None);
         let initial_combination = rand_choose_combination(rand_comb_len());
-        
         let mut prompt = if let Some(prompt) = load_prompt(&self.deopt) {
             prompt
         } else {
@@ -237,7 +239,7 @@ impl Fuzzer {
         };
         let mut loop_cnt = 0;
         let mut has_checked = false;
-
+        
         self.sync_from_previous_state(&mut logger)?;
 
         loop {
