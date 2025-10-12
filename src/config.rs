@@ -292,6 +292,90 @@ Here are the custom types declared in {project}. Ensure that the variables you u
 ----------------------
 {context}
 ----------------------
+
+Additionally, follow the follwing rules:
+
+ -- OWNERSHIP INTERPRETATION RULES --
+
+ARG OWNERSHIP  (applies to object arguments you create and pass in)
+	Caller keeps ownership:
+	 - The function does NOT take ownership of the argument. Caller must free it later.
+   	 - Code rule: If you create an object and call the function, free the object yourself if the call fails or if it is not added/transferred to another owner.
+   	 - After calling, if the function returns a failure status, call the destructor/free routine on the new object.
+		
+	Caller loses ownership:
+	 - Function takes ownership of the argument on success. Do NOT free the argument after a successful call.
+	 - Code rule: check the function return; On success do not free. On failure, if the function indicates it did not consume the argument, free it (see function doc or status return).
+	None:
+	 - Ownership not specified. Be conservative: treat as 'Caller keeps ownership' unless the function name or `func_info` explicitly says this call transfers ownership (e.g., 'adds to container', 'consumes', 'takes ownership').
+	 - Code rule: if uncertain, insert a guarded free on failure.
+	 
+RETURN OWNERSHIP (applies to pointers/objects returned by functions)
+	Caller owns:
+	 - The returned object is owned by the caller and must be freed by the caller when no longer needed, unless ownership is transferred to another object (e.g., added to an array or object).
+	Library owns:
+	 - The library retains ownership, returned object must not be freed by the caller.
+	None:
+	 -  Not specified. If the function name includes 'Create'/'Parse'/'New' treat as caller-owned. If it is a getter/borrower, treat as borrowed (do not free). When uncertain, use conservative patterns: free only if created by you.
+
+//IMPORTANT//
+GENERATED CODE ENFORCEMENT (always include these defensive checks)
+- For Replace/Insert/Add-like calls: 
+	- Always check the return status.
+	- These calls take ownership on success but not on failure.
+	- If the call fails and you created the argument, free it immediately.
+	- On success, do not free (ownership transferred).
+- For Detach-style calls:
+	- The returned pointer is caller-owned — always free it after use.
+- For Get-style calls:
+	- The returned pointer is borrowed — do not free.
+- For any object created by *_Create*, *_Parse*, *_New*:
+  - Ensure that the **exact pointer you created** is either:
+      a) added to a container (ownership transferred)
+      b) deleted/freed if not added
+  - Do not assume creating a new object inside an Add/Insert call counts as transferring ownership of your original pointer.
+- For functions returning printable or serialized buffers (e.g., cJSON_Print, SerializeToString, etc.):
+	- These return caller-owned buffers — always free() them after use.
+- Always close or free all allocated resources (FILE*, malloc, new[], etc.) on every path — success or failure. 
+	- Use guarded cleanup (e.g., if (ptr) free(ptr);) to ensure no leaks.
+
+
+Here are few examples (cJSON).
+A. function returns status (bool) and arg_ownership=Caller keeps ownership:
+	cJSON *newItem = cJSON_CreateObject();
+	// fill newItem ...
+	cJSON_bool ok = cJSON_ReplaceItemInObject(json, 'replace_me', newItem);
+	if (!ok) {
+	    // replace failed; caller still owns newItem => free it
+	    cJSON_Delete(newItem);
+	}
+	// else: library owns newItem (do not delete)
+
+B. function returns status and arg_ownership=Caller loses ownership
+	cJSON *newItem = cJSON_CreateObject();
+	// fill newItem ...
+	cJSON_bool ok = cJSON_AddItemToArray(arr, newItem);
+	if (!ok) {
+	    // add failed: library did not take ownership, caller must free
+	    cJSON_Delete(newItem);
+	} else {
+	    // success: container owns newItem -> do not delete
+	}
+	
+C. function returns pointer and ret_ownership=Caller owns
+	cJSON *res = cJSON_DetachItemFromObject(obj, 'k');
+	if (res) {
+	    // we own res now; free when done
+	    cJSON_Delete(res);
+	}
+
+D. getter (borrowed)
+	cJSON *child = cJSON_GetObjectItemCaseSensitive(obj, 'k');
+	if (child) {
+	    // borrowed pointer, do NOT delete
+	    // use directly
+	}
+	
 ";
 
 pub const USER_GEN_TEMPLATE: &str = "Create a C++ language program step by step by using {project} library APIs and following the instructions below:
