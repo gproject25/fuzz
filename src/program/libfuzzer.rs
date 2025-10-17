@@ -376,7 +376,8 @@ impl LibFuzzer {
     fn minimize_fuzzers_corpus(&self) -> Result<()> {
         let seed_dir = self.deopt.get_library_seed_dir()?;
         let seeds = crate::deopt::utils::read_sort_dir(&seed_dir)?;
-        let pool = ThreadPool::new(max_cpu_count() / 2);
+        let threads = std::cmp::max(1, max_cpu_count() / 2);
+        let pool = ThreadPool::new(threads);
         let num_seeds = seeds.len();
         for (i, seed) in seeds.iter().enumerate() {
             let libfuzzer = self.clone();

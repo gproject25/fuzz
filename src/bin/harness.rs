@@ -198,6 +198,7 @@ fn fuse_fuzzer(
     } else {
         deopt.get_library_seed_dir()?
     };
+    
     let programs = crate::deopt::utils::read_sort_dir(&test_dir)?;
     let batch_size = programs.len() / n_fuzzer;
 
@@ -207,6 +208,7 @@ fn fuse_fuzzer(
     } else {
         core
     };
+
     let mut lib_fuzzer = LibFuzzer::new(programs, batch_size, core, deopt, use_cons);
     lib_fuzzer.transform()?;
     lib_fuzzer.synthesis()?;

@@ -340,42 +340,40 @@ GENERATED CODE ENFORCEMENT (always include these defensive checks)
 	- Use guarded cleanup (e.g., if (ptr) free(ptr);) to ensure no leaks.
 
 
-Here are few examples (cJSON).
-A. function returns status (bool) and arg_ownership=Caller keeps ownership:
-	cJSON *newItem = cJSON_CreateObject();
-	// fill newItem ...
-	cJSON_bool ok = cJSON_ReplaceItemInObject(json, 'replace_me', newItem);
-	if (!ok) {
-	    // replace failed; caller still owns newItem => free it
-	    cJSON_Delete(newItem);
-	}
-	// else: library owns newItem (do not delete)
+Here are a few corrected examples (cJSON):
+1. Status-returning API (cJSON_bool) and caller-owned argument:
+    cJSON *obj = cJSON_CreateObject();
+    cJSON_bool ok = cJSON_ReplaceItemInObject(json, 'replace_me', obj);
+    if (!ok) {
+        cJSON_Delete(obj); // free on failure
+    }
+    // success: container owns obj
 
-B. function returns status and arg_ownership=Caller loses ownership
-	cJSON *newItem = cJSON_CreateObject();
-	// fill newItem ...
-	cJSON_bool ok = cJSON_AddItemToArray(arr, newItem);
-	if (!ok) {
-	    // add failed: library did not take ownership, caller must free
-	    cJSON_Delete(newItem);
-	} else {
-	    // success: container owns newItem -> do not delete
-	}
-	
-C. function returns pointer and ret_ownership=Caller owns
-	cJSON *res = cJSON_DetachItemFromObject(obj, 'k');
-	if (res) {
-	    // we own res now; free when done
-	    cJSON_Delete(res);
-	}
+2. Pointer-returning API (cJSON*) and caller-owned argument:
+    cJSON *newItem = cJSON_AddTrueToObject(json, 'key');
+    if (!newItem) {
+        cJSON_Delete(obj); // free your created object if Add failed
+    }
+    // success: container owns newItem
 
-D. getter (borrowed)
-	cJSON *child = cJSON_GetObjectItemCaseSensitive(obj, 'k');
-	if (child) {
-	    // borrowed pointer, do NOT delete
-	    // use directly
-	}
-	
+3. Duplicating an object:
+    cJSON *copy = cJSON_Duplicate(widget, 1); // 1 = recursive
+    if (copy) {
+        cJSON_Delete(copy); // we own the copy
+    }
+
+4. Getter / borrowed object:
+    cJSON *child = cJSON_GetObjectItemCaseSensitive(json, 'key');
+    if (child) {
+        // borrowed pointer, do not free
+    }
+
+5. Printable buffer returned by library:
+    char *printed = cJSON_Print(json);
+    if (printed) {
+        fwrite(printed, 1, strlen(printed), out_file);
+        free(printed); // always free
+    }
 ";
 
 pub const USER_GEN_TEMPLATE: &str = "Create a C++ language program step by step by using {project} library APIs and following the instructions below:
